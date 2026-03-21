@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { LayoutDashboard, Globe, Database, Settings, Server, Cpu, HardDrive, Plus, Trash2, ShieldCheck, FolderSync, Users, Package, LogOut, Loader2, Code, Network } from 'lucide-react';
+import { LayoutDashboard, Globe, Database, Settings, Server, Cpu, HardDrive, Plus, Trash2, ShieldCheck, FolderSync, Users, Package, LogOut, Loader2, Code, Network, Archive, FileIcon, Folder, Upload, ServerCog } from 'lucide-react';
 
 const API_BASE = '/api';
 
@@ -29,12 +29,23 @@ function App() {
   const [newFtpPass, setNewFtpPass] = useState('');
   const [newFtpDomain, setNewFtpDomain] = useState('');
   
+  // Backups & File Manager
+  const [backupsList, setBackupsList] = useState([]);
+  
+  const [fmWebsiteId, setFmWebsiteId] = useState('');
+  const [fmPath, setFmPath] = useState('public_html');
+  const [fmItems, setFmItems] = useState([]);
+  const [fmNewFolder, setFmNewFolder] = useState('');
+
   // Users & Packages
   const [usersList, setUsersList] = useState([]);
   const [newUser, setNewUser] = useState('');
   const [newPass, setNewPass] = useState('');
   const [newRole, setNewRole] = useState('user');
   const [selectedPackage, setSelectedPackage] = useState('');
+
+  // Settings
+  const [serverSettings, setServerSettings] = useState({ ns1: '', ns2: '', server_ip: '' });
 
   const [packagesList, setPackagesList] = useState([]);
   const [newPkgName, setNewPkgName] = useState('');
@@ -76,7 +87,7 @@ function App() {
   };
 
   const fetchAllData = () => {
-    if (currentUser?.role === 'admin') fetchSystemInfo();
+    if (currentUser?.role === 'admin') { fetchSystemInfo(); fetchBackups(); fetchSettings(); }
     fetchWebsites();
     fetchDatabases();
     fetchFtpUsers();
@@ -90,11 +101,63 @@ function App() {
   const fetchWebsites = async () => { try { const { data } = await axios.get(`${API_BASE}/websites`); setWebsites(data); } catch (e) { } };
   const fetchDatabases = async () => { try { const { data } = await axios.get(`${API_BASE}/databases`); setDatabases(data); } catch (e) { } };
   const fetchFtpUsers = async () => { try { const { data } = await axios.get(`${API_BASE}/ftp`); setFtpUsers(data); } catch (e) { } };
-  
   const fetchUsersList = async () => { try { const { data } = await axios.get(`${API_BASE}/users`); setUsersList(data); } catch (e) { } };
   const fetchPackagesList = async () => { try { const { data } = await axios.get(`${API_BASE}/packages`); setPackagesList(data); } catch (e) { } };
+  const fetchBackups = async () => { try { const { data } = await axios.get(`${API_BASE}/backups`); setBackupsList(data); } catch (e) { } };
+  const fetchSettings = async () => { try { const { data } = await axios.get(`${API_BASE}/settings`); setServerSettings(data); } catch (e) { } };
 
-  // --- Handlers (Zero-Bug Policy Applied) ---
+  const loadFileManager = async (siteId, overridePath) => {
+    if(!siteId) return;
+    try {
+      const p = overridePath || fmPath;
+      const { data } = await axios.get(`${API_BASE}/websites/${siteId}/files?dirPath=${encodeURIComponent(p)}`);
+      setFmItems(data);
+      setFmWebsiteId(siteId);
+      setFmPath(p);
+    } catch (err) { alert('FM Error: ' + (err.response?.data?.error || err.message)); }
+  };
+
+  const handleFmCreateFolder = async (e) => {
+    e.preventDefault();
+    if(!fmWebsiteId || !fmNewFolder) return;
+    try {
+      await axios.post(`${API_BASE}/websites/${fmWebsiteId}/files`, { parentPath: fmPath, newFolderName: fmNewFolder });
+      setFmNewFolder('');
+      loadFileManager(fmWebsiteId, fmPath);
+    } catch (err) { alert('HATA: ' + (err.response?.data?.error || err.message)); }
+  };
+
+  const handleFmDelete = async (itemName) => {
+    if(!fmWebsiteId) return;
+    try {
+      await axios.post(`${API_BASE}/websites/${fmWebsiteId}/files/delete`, { targetPath: fmPath + '/' + itemName });
+      loadFileManager(fmWebsiteId, fmPath);
+    } catch (err) { alert('HATA: ' + (err.response?.data?.error || err.message)); }
+  };
+
+  const handleCreateBackup = async (id) => {
+    try { alert('Arsivleme (tar.gz) baslatiliyor. Lutfen bekleyin...'); await axios.post(`${API_BASE}/websites/${id}/backup`); alert('Backup tamamlandi!'); fetchBackups(); } 
+    catch (err) { alert('HATA: ' + (err.response?.data?.error || err.message)); }
+  };
+
+  const handleDeleteBackup = async (filename) => {
+    if(!confirm(`Emin misiniz? ${filename} silinecek.`)) return;
+    try { await axios.delete(`${API_BASE}/backups/${filename}`); fetchBackups(); } 
+    catch (err) { alert('HATA: ' + (err.response?.data?.error || err.message)); }
+  };
+
+  const handleRestoreBackup = async (filename) => {
+    const domain = filename.split('_backup_')[0];
+    if(!confirm(`${filename} arşivi ${domain} isimli sitenin üzerine yazılacak. Onaylıyor musunuz?`)) return;
+    try { alert('Arşiv geri yükleniyor, lütfen bekleyin...'); await axios.post(`${API_BASE}/backups/restore`, { filename, domain }); alert('Geri yükleme tamamlandı!'); } 
+    catch (err) { alert('HATA: ' + (err.response?.data?.error || err.message)); }
+  };
+
+  const handleInstallPma = async (id) => {
+    try { const { data } = await axios.post(`${API_BASE}/websites/${id}/pma`); window.open(data.url, '_blank'); } 
+    catch (err) { alert('HATA: ' + (err.response?.data?.error || err.message)); }
+  };
+
   const handleAddWebsite = async (e) => {
     e.preventDefault();
     if (!newDomain) return;
@@ -155,6 +218,12 @@ function App() {
     catch (err) { alert('HATA: ' + (err.response?.data?.error || err.message)); }
   };
 
+  const handleSaveSettings = async (e) => {
+    e.preventDefault();
+    try { await axios.post(`${API_BASE}/settings`, serverSettings); alert('Settings Saved!'); } 
+    catch (err) { alert('HATA: ' + (err.response?.data?.error || err.message)); }
+  };
+
   // --- Render Login ---
   if (!token) {
     return (
@@ -163,8 +232,8 @@ function App() {
           <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-primary-500 to-primary-400 flex items-center justify-center text-white shadow-xl shadow-primary-500/30 mb-6">
             <Server className="h-8 w-8" />
           </div>
-          <h1 className="text-2xl font-bold text-white mb-2">AppServer v5</h1>
-          <p className="text-slate-400 text-sm mb-6 text-center">Web Hosting Control Panel</p>
+          <h1 className="text-2xl font-bold text-white mb-2">AppServer v6</h1>
+          <p className="text-slate-400 text-sm mb-6 text-center">Ultimate Hosting Panel</p>
           
           <form className="w-full space-y-4" onSubmit={handleLogin}>
             {loginError && <div className="p-3 bg-red-500/20 border border-red-500/50 text-red-100 rounded-lg text-sm text-center">{loginError}</div>}
@@ -190,13 +259,15 @@ function App() {
   
   const navItems = [
     { id: 'dashboard', icon: LayoutDashboard, label: isAdmin ? 'WHM Dashboard' : 'cPanel Home' },
+    { id: 'file-manager', icon: FolderSync, label: 'File Manager' },
     { id: 'websites', icon: Globe, label: 'Domains & DNS' },
     { id: 'databases', icon: Database, label: 'Databases' },
-    { id: 'ftp', icon: FolderSync, label: 'FTP Accounts' }
+    { id: 'ftp', icon: FolderSync, label: 'FTP / Storage' }
   ];
+  if (isAdmin) navItems.push({ id: 'backups', icon: Archive, label: 'Backups (Global)' });
   if (isAdmin || currentUser.role === 'reseller') navItems.push({ id: 'users', icon: Users, label: 'Users & Sub-Accounts' });
   if (isAdmin) navItems.push({ id: 'packages', icon: Package, label: 'Hosting Packages' });
-  navItems.push({ id: 'settings', icon: Settings, label: 'Settings' });
+  if (isAdmin) navItems.push({ id: 'settings', icon: Settings, label: 'Server Settings' });
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 dark:bg-dark-900">
@@ -209,7 +280,7 @@ function App() {
           <div>
             <span className="font-bold text-xl tracking-tight text-slate-800 dark:text-white block">AppServer</span>
             <span className={`text-xs font-semibold uppercase tracking-widest ${isAdmin ? 'text-primary-500' : 'text-emerald-500'}`}>
-              {isAdmin ? 'WHM Admin' : 'cPanel User'}
+              {isAdmin ? 'WHM Admin (v6)' : 'cPanel User'}
             </span>
           </div>
         </div>
@@ -303,11 +374,13 @@ function App() {
           {activeTab === 'dashboard' && !isAdmin && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6 animate-in slide-in-from-bottom-6">
               {[
+                { icon: FolderSync, color: 'text-emerald-500', bg: 'bg-emerald-500/10', label: 'File Manager', desc: 'Browse Files', tab: 'file-manager' },
                 { icon: Globe, color: 'text-blue-500', bg: 'bg-blue-500/10', label: 'Domains', desc: 'Add web sites', tab: 'websites' },
                 { icon: Network, color: 'text-indigo-500', bg: 'bg-indigo-500/10', label: 'Zone Editor', desc: 'Manage DNS', tab: 'websites' },
                 { icon: Database, color: 'text-orange-500', bg: 'bg-orange-500/10', label: 'Databases', desc: 'MySQL / MariaDB', tab: 'databases' },
-                { icon: FolderSync, color: 'text-emerald-500', bg: 'bg-emerald-500/10', label: 'File Manager', desc: 'Setup FTP', tab: 'ftp' },
                 { icon: Code, color: 'text-violet-500', bg: 'bg-violet-500/10', label: 'Select PHP', desc: 'PHP-FPM Switcher', tab: 'websites' },
+                { icon: ServerCog, color: 'text-fuchsia-500', bg: 'bg-fuchsia-500/10', label: 'phpMyAdmin', desc: 'SQL Access', tab: 'databases' },
+                { icon: Archive, color: 'text-slate-500', bg: 'bg-slate-500/10', label: 'Backups', desc: 'tar.gz Restore', tab: 'websites' },
                 { icon: ShieldCheck, color: 'text-green-500', bg: 'bg-green-500/10', label: 'SSL/TLS', desc: 'Let\'s Encrypt', tab: 'websites' },
               ].map((item, idx) => (
                 <button key={idx} onClick={() => setActiveTab(item.tab)} className="glass-panel p-6 flex flex-col items-center justify-center text-center gap-4 hover:-translate-y-2 hover:shadow-xl hover:shadow-primary-500/20 transition-all duration-300">
@@ -321,6 +394,58 @@ function App() {
                 </button>
               ))}
             </div>
+          )}
+
+          {activeTab === 'file-manager' && (
+             <div className="space-y-6">
+                <div className="glass-panel p-6 flex flex-col md:flex-row justify-between items-center gap-4">
+                  <div className="flex items-center gap-4 flex-1">
+                    <select 
+                        value={fmWebsiteId} 
+                        onChange={(e) => loadFileManager(e.target.value, 'public_html')} 
+                        className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white/50 dark:bg-dark-800/50 outline-none w-64">
+                      <option value="">Select Domain Container...</option>
+                      {websites.map(w => <option key={w.id} value={w.id}>{w.domain}</option>)}
+                    </select>
+                    {fmWebsiteId && (
+                       <span className="text-slate-500 dark:text-slate-400 font-mono text-sm">Path: /{fmPath}</span>
+                    )}
+                  </div>
+                  {fmWebsiteId && (
+                     <form onSubmit={handleFmCreateFolder} className="flex gap-2">
+                       <input type="text" value={fmNewFolder} onChange={(e) => setFmNewFolder(e.target.value)} placeholder="New Folder" className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg outline-none w-32" />
+                       <button type="submit" className="btn-primary px-4"><Folder className="h-4 w-4 inline mr-1"/> Create</button>
+                     </form>
+                  )}
+                </div>
+
+                {fmWebsiteId && (
+                   <div className="glass-panel overflow-hidden">
+                    <table className="w-full text-left">
+                      <thead className="bg-slate-50/50 dark:bg-dark-800/80 border-b border-white/10 text-slate-500 text-xs uppercase font-semibold">
+                        <tr><th className="px-6 py-4">Name</th><th className="px-6 py-4">Size</th><th className="px-6 py-4">Last Modified</th><th className="px-6 py-4 text-right">Actions</th></tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200 dark:divide-white/5">
+                        {fmItems.map(item => (
+                           <tr key={item.name} className="hover:bg-slate-50/50 dark:hover:bg-white/5 transition-colors">
+                            <td className="px-6 py-4 font-medium text-slate-800 dark:text-slate-200 flex items-center gap-3">
+                              {item.isDirectory ? <Folder className="text-blue-500 h-5 w-5" /> : <FileIcon className="text-slate-400 h-5 w-5" />}
+                              {item.name}
+                            </td>
+                            <td className="px-6 py-4 text-slate-500">{item.isDirectory ? '-' : (item.size/1024).toFixed(2) + ' KB'}</td>
+                            <td className="px-6 py-4 text-slate-500 text-sm">{new Date(item.mtime).toLocaleString()}</td>
+                            <td className="px-6 py-4 text-right flex justify-end gap-2">
+                              {item.isDirectory && <button onClick={() => loadFileManager(fmWebsiteId, fmPath + '/' + item.name)} className="text-primary-500 text-sm font-semibold hover:underline mr-4">Open</button>}
+                              <button onClick={() => handleFmDelete(item.name)} className="text-slate-400 hover:text-red-500"><Trash2 className="h-5 w-5" /></button>
+                            </td>
+                           </tr>
+                        ))}
+                        {fmItems.length === 0 && <tr><td colSpan="4" className="text-center p-8 text-slate-500">Folder is empty</td></tr>}
+                      </tbody>
+                    </table>
+                   </div>
+                )}
+             </div>
           )}
 
           {activeTab === 'websites' && (
@@ -341,9 +466,9 @@ function App() {
                 <table className="w-full text-left">
                   <thead className="bg-slate-50/50 dark:bg-dark-800/80 border-b border-slate-200 dark:border-white/10 text-slate-500 dark:text-slate-400 uppercase text-xs font-semibold tracking-wider">
                     <tr>
-                      <th className="px-6 py-4">Domain / Bind9 Zone</th>
+                      <th className="px-6 py-4">Domain / Zone</th>
                       <th className="px-6 py-4">Web Server</th>
-                      <th className="px-6 py-4">Engine</th>
+                      <th className="px-6 py-4">Engine / PHP</th>
                       <th className="px-6 py-4 text-right">Actions</th>
                     </tr>
                   </thead>
@@ -368,10 +493,11 @@ function App() {
                           </select>
                         </td>
                         <td className="px-6 py-4 text-right flex justify-end gap-2">
+                           <button onClick={() => handleCreateBackup(site.id)} className="p-2 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-lg flex items-center gap-1 text-sm" title="Backup Entire Site"><Archive className="h-4 w-4" /> Backup</button>
                           {site.has_ssl ? (
-                            <span className="p-2 text-green-500 rounded-lg flex items-center gap-1 text-sm font-medium"><ShieldCheck className="h-4 w-4" /> SSL Active</span>
+                            <span className="p-2 text-green-500 rounded-lg flex items-center gap-1 text-sm font-medium"><ShieldCheck className="h-4 w-4" /> SSL</span>
                           ) : (
-                            <button onClick={() => handleInstallSSL(site.id)} className="p-2 text-primary-500 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-500/10 rounded-lg transition-colors flex items-center gap-1 text-sm" title="Install Let's Encrypt SSL"><ShieldCheck className="h-4 w-4" /> Force SSL</button>
+                            <button onClick={() => handleInstallSSL(site.id)} className="p-2 text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-lg transition-colors flex items-center gap-1 text-sm"><ShieldCheck className="h-4 w-4" /> SSL</button>
                           )}
                           <button onClick={() => handleDeleteWebsite(site.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors title='Delete Domain and DNS'"><Trash2 className="h-5 w-5" /></button>
                         </td>
@@ -396,13 +522,17 @@ function App() {
                <div className="glass-panel overflow-hidden">
                 <table className="w-full text-left">
                   <thead className="bg-slate-50/50 dark:bg-dark-800/80 border-b border-slate-200 dark:border-white/10 text-slate-500 dark:text-slate-400 uppercase text-xs font-semibold tracking-wider">
-                    <tr><th className="px-6 py-4">Database Name</th><th className="px-6 py-4">Assigned User</th><th className="px-6 py-4">Created Date</th><th className="px-6 py-4 text-right">Actions</th></tr>
+                    <tr><th className="px-6 py-4">Database Name</th><th className="px-6 py-4">Linked Website (For PMA)</th><th className="px-6 py-4">Created Date</th><th className="px-6 py-4 text-right">Actions</th></tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 dark:divide-white/5">
                     {databases.map(db => (
                       <tr key={db.id} className="hover:bg-slate-50/50 dark:hover:bg-white/5 transition-colors">
                         <td className="px-6 py-4 font-medium text-slate-800 dark:text-slate-200 flex items-center gap-3"><Database className="h-5 w-5 text-slate-400" />{db.db_name}</td>
-                        <td className="px-6 py-4 text-slate-600 dark:text-slate-300">{db.db_user}</td>
+                        <td className="px-6 py-4 text-slate-600 dark:text-slate-300">
+                            {websites.length > 0 ? (
+                                <button onClick={() => handleInstallPma(websites[0].id)} className="text-primary-500 text-sm font-semibold flex items-center gap-1 hover:underline"><ServerCog className="h-4 w-4" /> Go to phpMyAdmin</button>
+                            ) : '-'}
+                        </td>
                         <td className="px-6 py-4 text-slate-500 text-sm">{new Date(db.created_at).toLocaleDateString()}</td>
                         <td className="px-6 py-4 text-right">
                            <button onClick={() => handleDeleteDatabase(db.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors"><Trash2 className="h-5 w-5" /></button>
@@ -413,6 +543,34 @@ function App() {
                 </table>
               </div>
             </div>
+          )}
+          
+          {activeTab === 'backups' && (
+             <div className="space-y-6">
+                <div className="glass-panel p-6">
+                  <h2 className="text-xl font-bold dark:text-white mb-2">Global Backup Repository</h2>
+                  <p className="text-sm text-slate-500 mb-6">Listed below are all tar.gz archives created by users through the cPanel dashboard.</p>
+                  
+                  <table className="w-full text-left">
+                     <thead className="bg-slate-50/50 dark:bg-dark-800/80 border-b border-white/10 text-slate-500 text-xs uppercase font-semibold">
+                       <tr><th className="py-4 px-6">Archive Name</th><th className="py-4 px-6">Size</th><th className="py-4 px-6">Generated ON</th><th className="py-4 px-6 text-right">Actions</th></tr>
+                     </thead>
+                     <tbody className="divide-y divide-white/5">
+                       {backupsList.map(b => (
+                          <tr key={b.filename} className="hover:bg-white/5 transition-colors">
+                            <td className="px-6 py-4 font-mono text-emerald-500 font-semibold">{b.filename}</td>
+                            <td className="px-6 py-4 text-slate-400">{(b.size / 1024 / 1024).toFixed(2)} MB</td>
+                            <td className="px-6 py-4 text-slate-400">{new Date(b.created_at).toLocaleString()}</td>
+                            <td className="px-6 py-4 text-right flex justify-end gap-2">
+                               <button onClick={() => handleRestoreBackup(b.filename)} className="p-2 text-blue-500 hover:bg-blue-500/10 rounded-lg flex items-center gap-1 text-sm font-semibold transition-colors"><FolderSync className="h-4 w-4" /> Restore</button>
+                               <button onClick={() => handleDeleteBackup(b.filename)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"><Trash2 className="h-5 w-5" /></button>
+                            </td>
+                          </tr>
+                       ))}
+                     </tbody>
+                  </table>
+                </div>
+             </div>
           )}
 
           {activeTab === 'ftp' && (
@@ -526,13 +684,30 @@ function App() {
             </div>
           )}
 
-          {activeTab === 'settings' && (
-            <div className="glass-panel p-12 text-center text-slate-500">
-              <Settings className="h-16 w-16 mx-auto mb-4 opacity-20 text-primary-500" />
-              <h2 className="text-xl font-bold dark:text-white mb-2">AppServer Core Engine Settings</h2>
-              <p>Global PHP configuration, Webmail parameters, and Backup mechanisms are scheduled for AppServer v6.0.</p>
+          {activeTab === 'settings' && isAdmin && (
+            <div className="space-y-6 animate-in fade-in duration-500">
+               <div className="glass-panel p-6">
+                 <h2 className="text-xl font-bold dark:text-white mb-2">Global Server Settings</h2>
+                 <p className="text-sm text-slate-500 mb-6">Manage default Name Servers and Server IP address here.</p>
+                 <form onSubmit={handleSaveSettings} className="space-y-4 max-w-lg">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Default NS1</label>
+                      <input type="text" value={serverSettings.ns1 || ''} onChange={(e) => setServerSettings({...serverSettings, ns1: e.target.value})} className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white/50 dark:bg-dark-800/50 outline-none" placeholder="ns1.yourdomain.com" required />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Default NS2</label>
+                      <input type="text" value={serverSettings.ns2 || ''} onChange={(e) => setServerSettings({...serverSettings, ns2: e.target.value})} className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white/50 dark:bg-dark-800/50 outline-none" placeholder="ns2.yourdomain.com" required />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Server IP Address</label>
+                      <input type="text" value={serverSettings.server_ip || ''} onChange={(e) => setServerSettings({...serverSettings, server_ip: e.target.value})} className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white/50 dark:bg-dark-800/50 outline-none" placeholder="127.0.0.1" required />
+                    </div>
+                    <button type="submit" className="btn-primary flex items-center gap-2 mt-4 px-6"><Settings className="h-4 w-4" /> Save Settings</button>
+                 </form>
+               </div>
             </div>
           )}
+
         </div>
       </div>
     </div>

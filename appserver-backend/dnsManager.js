@@ -14,9 +14,9 @@ if (!isLinux) {
     }
 }
 
-async function createDnsZone(domain, ipAddress) {
+async function createDnsZone(domain, ipAddress, ns1 = 'ns1', ns2 = 'ns2') {
     if (!isLinux) {
-        console.log(`[MOCK] DNS Zone created for ${domain} pointing to ${ipAddress}`);
+        console.log(`[MOCK] DNS Zone created for ${domain} pointing to ${ipAddress} with NS: ${ns1}, ${ns2}`);
         return true;
     }
 
@@ -32,12 +32,10 @@ $TTL    604800
                         2419200         ; Expire
                          604800 )       ; Negative Cache TTL
 ;
-@       IN      NS      ns1.${domain}.
-@       IN      NS      ns2.${domain}.
+@       IN      NS      ${ns1}.
+@       IN      NS      ${ns2}.
 @       IN      A       ${ipAddress}
 www     IN      A       ${ipAddress}
-ns1     IN      A       ${ipAddress}
-ns2     IN      A       ${ipAddress}
 mail    IN      A       ${ipAddress}
 ftp     IN      A       ${ipAddress}
 `;

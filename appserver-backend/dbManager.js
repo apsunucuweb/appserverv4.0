@@ -16,8 +16,15 @@ async function createDatabase(dbName, dbUser, dbPass) {
         // Gerçek kullanım senaryosunda şifre config'den gelmelidir. MVP için standart root varsayılıyor.
         const connection = await mysql.createConnection({ host: 'localhost', user: 'root', password: '' });
         
+        // Veritabanının var olup olmadığını kontrol et
+        const [rows] = await connection.query(`SHOW DATABASES LIKE '${dbName}'`);
+        if (rows.length > 0) {
+            await connection.end();
+            throw new Error('Bu isimde bir veritabanı zaten mevcut.');
+        }
+
         // Veritabanı yarat
-        await connection.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\``);
+        await connection.query(`CREATE DATABASE \`${dbName}\``);
         // Kullanıcı yarat ve yetkilendir
         await connection.query(`CREATE USER IF NOT EXISTS '${dbUser}'@'localhost' IDENTIFIED BY '${dbPass}'`);
         await connection.query(`GRANT ALL PRIVILEGES ON \`${dbName}\`.* TO '${dbUser}'@'localhost'`);

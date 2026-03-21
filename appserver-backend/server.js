@@ -12,6 +12,9 @@ const sslManager = require('./sslManager');
 const ftpManager = require('./ftpManager');
 const dnsManager = require('./dnsManager');
 const phpManager = require('./phpManager');
+const fileManager = require('./fileManager');
+const backupManager = require('./backupManager');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -90,6 +93,25 @@ const db = new sqlite3.Database(dbPath, (err) => {
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(user_id) REFERENCES users(id)
             )`);
+
+            // Settings
+            db.run(`CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )`, () => {
+                const defaults = [
+                    { key: 'ns1', value: 'ns1.appserver.local' },
+                    { key: 'ns2', value: 'ns2.appserver.local' },
+                    { key: 'server_ip', value: '127.0.0.1' }
+                ];
+                db.get("SELECT count(*) as count FROM settings", (err, row) => {
+                    if (row && row.count === 0) {
+                        const stmt = db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)");
+                        defaults.forEach(d => stmt.run(d.key, d.value));
+                        stmt.finalize();
+                    }
+                });
+            });
         });
     }
 });
@@ -130,6 +152,28 @@ app.post('/api/auth/login', (req, res) => {
         const token = jwt.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET, { expiresIn: '24h' });
         res.json({ token, user: { id: user.id, username: user.username, role: user.role } });
     });
+});
+
+// -- SETTINGS ROUTES --
+app.get('/api/settings', authenticate, async (req, res) => {
+    try {
+        const rows = await dbAll('SELECT * FROM settings');
+        const settings = {};
+        rows.forEach(r => settings[r.key] = r.value);
+        res.json(settings);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/settings', authenticate, requireRole(['admin']), async (req, res) => {
+    try {
+        const updates = req.body; // { ns1: '...', ns2: '...', server_ip: '...' }
+        const stmt = db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
+        for (const [key, value] of Object.entries(updates)) {
+            stmt.run(key, value);
+        }
+        stmt.finalize();
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // -- SYSTEM ROUTE --
@@ -219,12 +263,38 @@ app.post('/api/websites', authenticate, async (req, res) => {
     try {
         await nginxManager.createVhost(domain);
         
-        // Try creating default DNS Zone pointing to server IP
-        const serverIp = '89.252.139.124'; // Server IP (Can be dynamic in future)
-        try { await dnsManager.createDnsZone(domain, serverIp); } catch (e) { console.error('DNS Warning:', e.message); }
+        let serverIp = '127.0.0.1';
+        let ns1 = 'ns1.localhost';
+        let ns2 = 'ns2.localhost';
+        
+        try {
+            const settingsRows = await dbAll('SELECT * FROM settings');
+            const settings = {};
+            settingsRows.forEach(r => settings[r.key] = r.value);
+            if (settings.server_ip) serverIp = settings.server_ip;
+            if (settings.ns1) ns1 = settings.ns1;
+            if (settings.ns2) ns2 = settings.ns2;
+        } catch (e) {
+            console.error('Failed to load settings:', e.message);
+        }
+
+        let dnsWarning = null;
+        try { 
+            await dnsManager.createDnsZone(domain, serverIp, ns1, ns2); 
+        } catch (e) { 
+            console.error('DNS Warning:', e.message); 
+            dnsWarning = e.message;
+        }
 
         const result = await dbRun('INSERT INTO websites (user_id, domain) VALUES (?, ?)', [req.user.id, domain]);
-        res.json({ id: result.lastID, domain, status: 'active', php_version: '8.1' });
+        
+        try {
+            await phpManager.changePhpVersion(domain, '8.1');
+        } catch (e) {
+            console.error('PHP Setup Warning:', e.message);
+        }
+
+        res.json({ id: result.lastID, domain, status: 'active', php_version: '8.1', dns_warning: dnsWarning });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -331,6 +401,97 @@ app.delete('/api/ftp/:id', authenticate, (req, res) => {
         } catch (err) {
             res.status(500).json({ error: err.message });
         }
+    });
+});
+
+// -- APPSERVER V6.0 ENDPOINTS (File Manager, Backups, PMA) --
+
+app.get('/api/websites/:id/files', authenticate, (req, res) => {
+    const { id } = req.params;
+    const { dirPath } = req.query; // e.g. "public_html/css"
+    db.get(`SELECT domain FROM websites WHERE id = ? AND ${getVisibleUsersFilter(req.user)}`, [id], (err, row) => {
+        if (err || !row) return res.status(404).json({ error: 'Website not found' });
+        try {
+            const items = fileManager.listDirectory(row.domain, dirPath || 'public_html');
+            res.json(items);
+        } catch (error) { res.status(500).json({ error: error.message }); }
+    });
+});
+
+app.post('/api/websites/:id/files', authenticate, (req, res) => {
+    const { id } = req.params;
+    const { parentPath, newFolderName, newFileName, fileContent } = req.body;
+    db.get(`SELECT domain FROM websites WHERE id = ? AND ${getVisibleUsersFilter(req.user)}`, [id], (err, row) => {
+        if (err || !row) return res.status(404).json({ error: 'Website not found' });
+        try {
+            if (newFolderName) fileManager.createFolder(row.domain, parentPath, newFolderName);
+            if (newFileName) fileManager.writeFileContent(row.domain, path.join(parentPath, newFileName), fileContent);
+            res.json({ success: true });
+        } catch (error) { res.status(500).json({ error: error.message }); }
+    });
+});
+
+app.post('/api/websites/:id/files/delete', authenticate, (req, res) => {
+    const { id } = req.params;
+    const { targetPath } = req.body;
+    db.get(`SELECT domain FROM websites WHERE id = ? AND ${getVisibleUsersFilter(req.user)}`, [id], (err, row) => {
+        if (err || !row) return res.status(404).json({ error: 'Website not found' });
+        try {
+            fileManager.deleteItem(row.domain, targetPath);
+            res.json({ success: true });
+        } catch (error) { res.status(500).json({ error: error.message }); }
+    });
+});
+
+app.post('/api/websites/:id/backup', authenticate, (req, res) => {
+    const { id } = req.params;
+    db.get(`SELECT domain FROM websites WHERE id = ? AND ${getVisibleUsersFilter(req.user)}`, [id], async (err, row) => {
+        if (err || !row) return res.status(404).json({ error: 'Website not found' });
+        try {
+            const archiveName = await backupManager.createArchiveBackup(row.domain);
+            res.json({ success: true, archiveName });
+        } catch (error) { res.status(500).json({ error: error.message }); }
+    });
+});
+
+app.get('/api/backups', authenticate, requireRole(['admin']), (req, res) => {
+    try {
+        const backups = backupManager.listBackups();
+        res.json(backups);
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.delete('/api/backups/:filename', authenticate, requireRole(['admin']), (req, res) => {
+    try {
+        backupManager.deleteBackup(req.params.filename);
+        res.json({ success: true });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/api/backups/restore', authenticate, requireRole(['admin']), async (req, res) => {
+    const { filename, domain } = req.body;
+    try {
+        await backupManager.restoreBackup(filename, domain);
+        res.json({ success: true });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/api/websites/:id/pma', authenticate, (req, res) => {
+    const { id } = req.params;
+    db.get(`SELECT domain FROM websites WHERE id = ? AND ${getVisibleUsersFilter(req.user)}`, [id], (err, row) => {
+        if (err || !row) return res.status(404).json({ error: 'Website not found' });
+        try {
+            const isLinux = process.platform === 'linux';
+            const webRoot = isLinux ? `/var/www/${row.domain}/public_html/pma` : path.join(__dirname, 'mock_www', row.domain, 'public_html', 'pma');
+            const pmaSource = isLinux ? '/usr/share/phpmyadmin' : path.join(__dirname, 'mock_pma');
+
+            if (!fs.existsSync(pmaSource) && !isLinux) fs.mkdirSync(pmaSource, { recursive: true });
+
+            if (fs.existsSync(webRoot)) return res.json({ success: true, url: `http://${row.domain}/pma` });
+
+            fs.symlinkSync(pmaSource, webRoot, 'dir');
+            res.json({ success: true, url: `http://${row.domain}/pma` });
+        } catch (error) { res.status(500).json({ error: error.message }); }
     });
 });
 
