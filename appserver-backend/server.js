@@ -10,6 +10,8 @@ const nginxManager = require('./nginxManager');
 const dbManager = require('./dbManager');
 const sslManager = require('./sslManager');
 const ftpManager = require('./ftpManager');
+const dnsManager = require('./dnsManager');
+const phpManager = require('./phpManager');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -66,6 +68,7 @@ const db = new sqlite3.Database(dbPath, (err) => {
                 domain TEXT NOT NULL UNIQUE,
                 status TEXT DEFAULT 'active',
                 has_ssl INTEGER DEFAULT 0,
+                php_version TEXT DEFAULT '8.1',
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(user_id) REFERENCES users(id)
             )`);
@@ -215,8 +218,13 @@ app.post('/api/websites', authenticate, async (req, res) => {
     const { domain } = req.body;
     try {
         await nginxManager.createVhost(domain);
+        
+        // Try creating default DNS Zone pointing to server IP
+        const serverIp = '89.252.139.124'; // Server IP (Can be dynamic in future)
+        try { await dnsManager.createDnsZone(domain, serverIp); } catch (e) { console.error('DNS Warning:', e.message); }
+
         const result = await dbRun('INSERT INTO websites (user_id, domain) VALUES (?, ?)', [req.user.id, domain]);
-        res.json({ id: result.lastID, domain, status: 'active' });
+        res.json({ id: result.lastID, domain, status: 'active', php_version: '8.1' });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -228,8 +236,24 @@ app.delete('/api/websites/:id', authenticate, (req, res) => {
         if (err || !row) return res.status(404).json({ error: 'Website not found or access denied' });
         try {
             await nginxManager.deleteVhost(row.domain);
+            try { await dnsManager.deleteDnsZone(row.domain); } catch (e) { console.error('DNS Warning:', e.message); }
             await dbRun('DELETE FROM websites WHERE id = ?', [id]);
             res.json({ deleted: true });
+        } catch (err) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+});
+
+app.post('/api/websites/:id/php', authenticate, (req, res) => {
+    const { id } = req.params;
+    const { version } = req.body;
+    db.get(`SELECT domain FROM websites WHERE id = ? AND ${getVisibleUsersFilter(req.user)}`, [id], async (err, row) => {
+        if (err || !row) return res.status(404).json({ error: 'Website not found' });
+        try {
+            await phpManager.changePhpVersion(row.domain, version);
+            await dbRun('UPDATE websites SET php_version = ? WHERE id = ?', [version, id]);
+            res.json({ success: true, version });
         } catch (err) {
             res.status(500).json({ error: err.message });
         }

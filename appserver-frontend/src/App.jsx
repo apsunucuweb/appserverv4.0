@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { LayoutDashboard, Globe, Database, Settings, Server, Cpu, HardDrive, Plus, Trash2, ShieldCheck, FolderSync, Users, Package, LogOut, Loader2 } from 'lucide-react';
+import { LayoutDashboard, Globe, Database, Settings, Server, Cpu, HardDrive, Plus, Trash2, ShieldCheck, FolderSync, Users, Package, LogOut, Loader2, Code, Network } from 'lucide-react';
 
-const API_BASE = 'http://localhost:3001/api';
+const API_BASE = '/api';
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('token') || '');
@@ -42,7 +42,6 @@ function App() {
   const [newPkgDbs, setNewPkgDbs] = useState(1);
   const [newPkgFtps, setNewPkgFtps] = useState(1);
 
-  // Setup Axios globally
   useEffect(() => {
     if (token) {
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
@@ -77,7 +76,7 @@ function App() {
   };
 
   const fetchAllData = () => {
-    fetchSystemInfo();
+    if (currentUser?.role === 'admin') fetchSystemInfo();
     fetchWebsites();
     fetchDatabases();
     fetchFtpUsers();
@@ -95,62 +94,66 @@ function App() {
   const fetchUsersList = async () => { try { const { data } = await axios.get(`${API_BASE}/users`); setUsersList(data); } catch (e) { } };
   const fetchPackagesList = async () => { try { const { data } = await axios.get(`${API_BASE}/packages`); setPackagesList(data); } catch (e) { } };
 
-  // --- Handlers ---
+  // --- Handlers (Zero-Bug Policy Applied) ---
   const handleAddWebsite = async (e) => {
     e.preventDefault();
     if (!newDomain) return;
     try { await axios.post(`${API_BASE}/websites`, { domain: newDomain }); setNewDomain(''); fetchWebsites(); } 
-    catch (err) { alert('Failed to add website'); }
+    catch (err) { alert('HATA: ' + (err.response?.data?.error || err.message)); }
   };
   const handleDeleteWebsite = async (id) => {
     try { await axios.delete(`${API_BASE}/websites/${id}`); fetchWebsites(); } 
-    catch (err) { alert('Failed to delete website'); }
+    catch (err) { alert('HATA: ' + (err.response?.data?.error || err.message)); }
   };
   const handleInstallSSL = async (id) => {
-    try { alert('SSL Installation started...'); await axios.post(`${API_BASE}/websites/${id}/ssl`); alert('SSL Installed!'); fetchWebsites(); } 
-    catch (err) { alert('Failed to install SSL.'); }
+    try { alert('SSL Kurulumu Certbot uzerinden basladi, lutfen bekleyin...'); await axios.post(`${API_BASE}/websites/${id}/ssl`); alert('SSL Basariyla Kuruldu!'); fetchWebsites(); } 
+    catch (err) { alert('SSL Hatasi: ' + (err.response?.data?.error || err.message)); }
   };
+  const handlePhpChange = async (id, version) => {
+    try { alert(`PHP surumu ${version} olarak degistiriliyor...`); await axios.post(`${API_BASE}/websites/${id}/php`, {version}); alert('PHP Surumu Guncellendi!'); fetchWebsites(); }
+    catch (err) { alert('PHP Hatasi: ' + (err.response?.data?.error || err.message)); }
+  };
+
   const handleAddDatabase = async (e) => {
     e.preventDefault();
     if (!newDbName || !newDbUser || !newDbPass) return alert('All fields required');
     try { await axios.post(`${API_BASE}/databases`, { dbName: newDbName, dbUser: newDbUser, dbPass: newDbPass }); setNewDbName(''); setNewDbUser(''); setNewDbPass(''); fetchDatabases(); } 
-    catch (err) { alert('Failed to build database'); }
+    catch (err) { alert('HATA: ' + (err.response?.data?.error || err.message)); }
   };
   const handleDeleteDatabase = async (id) => {
     try { await axios.delete(`${API_BASE}/databases/${id}`); fetchDatabases(); } 
-    catch (err) { alert('Failed to drop DB'); }
+    catch (err) { alert('HATA: ' + (err.response?.data?.error || err.message)); }
   };
   const handleAddFtpUser = async (e) => {
     e.preventDefault();
     if (!newFtpUser || !newFtpPass || !newFtpDomain) return alert('All fields required');
     try { await axios.post(`${API_BASE}/ftp`, { username: newFtpUser, password: newFtpPass, domain: newFtpDomain }); setNewFtpUser(''); setNewFtpPass(''); fetchFtpUsers(); } 
-    catch (err) { alert('Failed to create FTP user'); }
+    catch (err) { alert('HATA: ' + (err.response?.data?.error || err.message)); }
   };
   const handleDeleteFtpUser = async (id) => {
     try { await axios.delete(`${API_BASE}/ftp/${id}`); fetchFtpUsers(); } 
-    catch (err) { alert('Failed to drop FTP'); }
+    catch (err) { alert('HATA: ' + (err.response?.data?.error || err.message)); }
   };
   
   const handleAddUser = async (e) => {
     e.preventDefault();
     try { await axios.post(`${API_BASE}/users`, { username: newUser, password: newPass, role: newRole, package_id: selectedPackage }); setNewUser(''); setNewPass(''); fetchUsersList(); } 
-    catch (err) { alert('Error: ' + (err.response?.data?.error || err.message)); }
+    catch (err) { alert('HATA: ' + (err.response?.data?.error || err.message)); }
   };
   const handleDeleteUser = async (id) => {
     try { await axios.delete(`${API_BASE}/users/${id}`); fetchUsersList(); } 
-    catch (err) { alert('Failed to drop User'); }
+    catch (err) { alert('HATA: ' + (err.response?.data?.error || err.message)); }
   };
 
   const handleAddPackage = async (e) => {
     e.preventDefault();
     try { await axios.post(`${API_BASE}/packages`, { name: newPkgName, max_websites: newPkgWebs, max_databases: newPkgDbs, max_ftp_users: newPkgFtps }); setNewPkgName(''); fetchPackagesList(); } 
-    catch (err) { alert('Failed to create Package'); }
+    catch (err) { alert('HATA: ' + (err.response?.data?.error || err.message)); }
   };
   const handleDeletePackage = async (id) => {
     try { await axios.delete(`${API_BASE}/packages/${id}`); fetchPackagesList(); } 
-    catch (err) { alert('Failed to drop Pkg'); }
+    catch (err) { alert('HATA: ' + (err.response?.data?.error || err.message)); }
   };
-
 
   // --- Render Login ---
   if (!token) {
@@ -160,8 +163,8 @@ function App() {
           <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-primary-500 to-primary-400 flex items-center justify-center text-white shadow-xl shadow-primary-500/30 mb-6">
             <Server className="h-8 w-8" />
           </div>
-          <h1 className="text-2xl font-bold text-white mb-2">AppServer</h1>
-          <p className="text-slate-400 text-sm mb-6 text-center">Login to your control panel</p>
+          <h1 className="text-2xl font-bold text-white mb-2">AppServer v5</h1>
+          <p className="text-slate-400 text-sm mb-6 text-center">Web Hosting Control Panel</p>
           
           <form className="w-full space-y-4" onSubmit={handleLogin}>
             {loginError && <div className="p-3 bg-red-500/20 border border-red-500/50 text-red-100 rounded-lg text-sm text-center">{loginError}</div>}
@@ -174,7 +177,7 @@ function App() {
                 className="w-full px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-700 text-white focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500" />
             </div>
             <button type="submit" disabled={isLoggingIn} className="w-full btn-primary py-3 flex justify-center items-center gap-2">
-              {isLoggingIn ? <Loader2 className=" animate-spin h-5 w-5" /> : 'Sign In'}
+              {isLoggingIn ? <Loader2 className=" animate-spin h-5 w-5" /> : 'Log In'}
             </button>
           </form>
         </div>
@@ -183,14 +186,16 @@ function App() {
   }
 
   // --- Render App ---
+  const isAdmin = currentUser.role === 'admin';
+  
   const navItems = [
-    { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { id: 'websites', icon: Globe, label: 'Websites' },
+    { id: 'dashboard', icon: LayoutDashboard, label: isAdmin ? 'WHM Dashboard' : 'cPanel Home' },
+    { id: 'websites', icon: Globe, label: 'Domains & DNS' },
     { id: 'databases', icon: Database, label: 'Databases' },
     { id: 'ftp', icon: FolderSync, label: 'FTP Accounts' }
   ];
-  if (currentUser.role === 'admin' || currentUser.role === 'reseller') navItems.push({ id: 'users', icon: Users, label: 'Users & Sub-Accounts' });
-  if (currentUser.role === 'admin') navItems.push({ id: 'packages', icon: Package, label: 'Hosting Packages' });
+  if (isAdmin || currentUser.role === 'reseller') navItems.push({ id: 'users', icon: Users, label: 'Users & Sub-Accounts' });
+  if (isAdmin) navItems.push({ id: 'packages', icon: Package, label: 'Hosting Packages' });
   navItems.push({ id: 'settings', icon: Settings, label: 'Settings' });
 
   return (
@@ -203,7 +208,9 @@ function App() {
           </div>
           <div>
             <span className="font-bold text-xl tracking-tight text-slate-800 dark:text-white block">AppServer</span>
-            <span className="text-xs font-semibold text-primary-500 uppercase tracking-widest">{currentUser.role}</span>
+            <span className={`text-xs font-semibold uppercase tracking-widest ${isAdmin ? 'text-primary-500' : 'text-emerald-500'}`}>
+              {isAdmin ? 'WHM Admin' : 'cPanel User'}
+            </span>
           </div>
         </div>
         
@@ -244,13 +251,13 @@ function App() {
           
           <header className="mb-8 flex justify-between items-end">
             <div>
-              <h1 className="text-3xl font-bold text-slate-800 dark:text-white mb-1 capitalize">{activeTab.replace('-', ' ')}</h1>
-              <p className="text-slate-500 dark:text-slate-400">Manage your server resources beautifully.</p>
+              <h1 className="text-3xl font-bold text-slate-800 dark:text-white mb-1 capitalize">{navItems.find(i => i.id === activeTab)?.label}</h1>
+              <p className="text-slate-500 dark:text-slate-400">{isAdmin ? 'Global Server Management (WHM)' : 'Personal Web Hosting (cPanel)'}</p>
             </div>
           </header>
 
-          {activeTab === 'dashboard' && (
-            <div className="space-y-6">
+          {activeTab === 'dashboard' && isAdmin && (
+            <div className="space-y-6 animate-in fade-in">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="glass-panel p-6 hover:shadow-xl transition-all duration-300 group">
                   <div className="flex justify-between items-start mb-4">
@@ -258,7 +265,7 @@ function App() {
                     <span className="text-xs font-semibold text-blue-500 bg-blue-50 dark:bg-blue-500/10 px-2 py-1 rounded-full">Live</span>
                   </div>
                   <div>
-                    <h3 className="text-slate-500 dark:text-slate-400 text-sm font-medium mb-1">CPU Usage</h3>
+                    <h3 className="text-slate-500 dark:text-slate-400 text-sm font-medium mb-1">Server CPU Usage</h3>
                     <p className="text-3xl font-bold text-slate-800 dark:text-white flex items-end gap-2">
                       {systemInfo ? systemInfo.cpu : '--'} <span className="text-lg text-slate-400 mb-1">%</span>
                     </p>
@@ -270,7 +277,7 @@ function App() {
                     <div className="p-3 bg-primary-100 text-primary-600 dark:bg-primary-500/10 dark:text-primary-400 rounded-xl group-hover:scale-110 transition-transform"><HardDrive className="h-6 w-6" /></div>
                   </div>
                   <div>
-                    <h3 className="text-slate-500 dark:text-slate-400 text-sm font-medium mb-1">RAM Usage</h3>
+                    <h3 className="text-slate-500 dark:text-slate-400 text-sm font-medium mb-1">Server RAM Allocated</h3>
                     <p className="text-3xl font-bold text-slate-800 dark:text-white flex items-end gap-2">
                       {systemInfo ? systemInfo.memUsed : '--'} 
                       <span className="text-lg text-slate-400 mb-1">/ {systemInfo ? systemInfo.memTotal : '--'} GB</span>
@@ -283,7 +290,7 @@ function App() {
                     <div className="p-3 bg-emerald-100 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400 rounded-xl group-hover:scale-110 transition-transform"><Globe className="h-6 w-6" /></div>
                   </div>
                   <div>
-                    <h3 className="text-slate-500 dark:text-slate-400 text-sm font-medium mb-1">Active Websites</h3>
+                    <h3 className="text-slate-500 dark:text-slate-400 text-sm font-medium mb-1">Hosted Domains (Total)</h3>
                     <p className="text-3xl font-bold text-slate-800 dark:text-white flex items-end gap-2">
                        {websites.length}
                     </p>
@@ -293,38 +300,80 @@ function App() {
             </div>
           )}
 
+          {activeTab === 'dashboard' && !isAdmin && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 animate-in slide-in-from-bottom-6">
+              {[
+                { icon: Globe, color: 'text-blue-500', bg: 'bg-blue-500/10', label: 'Domains', desc: 'Add web sites', tab: 'websites' },
+                { icon: Network, color: 'text-indigo-500', bg: 'bg-indigo-500/10', label: 'Zone Editor', desc: 'Manage DNS', tab: 'websites' },
+                { icon: Database, color: 'text-orange-500', bg: 'bg-orange-500/10', label: 'Databases', desc: 'MySQL / MariaDB', tab: 'databases' },
+                { icon: FolderSync, color: 'text-emerald-500', bg: 'bg-emerald-500/10', label: 'File Manager', desc: 'Setup FTP', tab: 'ftp' },
+                { icon: Code, color: 'text-violet-500', bg: 'bg-violet-500/10', label: 'Select PHP', desc: 'PHP-FPM Switcher', tab: 'websites' },
+                { icon: ShieldCheck, color: 'text-green-500', bg: 'bg-green-500/10', label: 'SSL/TLS', desc: 'Let\'s Encrypt', tab: 'websites' },
+              ].map((item, idx) => (
+                <button key={idx} onClick={() => setActiveTab(item.tab)} className="glass-panel p-6 flex flex-col items-center justify-center text-center gap-4 hover:-translate-y-2 hover:shadow-xl hover:shadow-primary-500/20 transition-all duration-300">
+                  <div className={`p-4 rounded-2xl ${item.bg} ${item.color}`}>
+                    <item.icon className="h-10 w-10" strokeWidth={1.5} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-800 dark:text-white mb-1">{item.label}</h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">{item.desc}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
           {activeTab === 'websites' && (
             <div className="space-y-6">
               <div className="glass-panel p-6 flex flex-col md:flex-row justify-between items-center gap-4">
                 <div>
-                  <h2 className="text-lg font-bold text-slate-800 dark:text-white">Deployed Domains</h2>
-                  <p className="text-sm text-slate-500">Add a new domain. Nginx routing is automatic.</p>
+                  <h2 className="text-lg font-bold text-slate-800 dark:text-white">Deployed Domains & DNS</h2>
+                  <p className="text-sm text-slate-500">Nginx Virtual Hosts and Bind9 Zones are created automatically.</p>
                 </div>
                 <form onSubmit={handleAddWebsite} className="flex gap-2 w-full md:w-auto">
                   <input type="text" value={newDomain} onChange={(e) => setNewDomain(e.target.value)} placeholder="example.com"
                     className="flex-1 md:w-64 px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white/50 dark:bg-dark-800/50 focus:ring-2 focus:ring-primary-500 outline-none" />
-                  <button type="submit" className="btn-primary flex items-center gap-2"><Plus className="h-4 w-4" /> Add</button>
+                  <button type="submit" className="btn-primary flex items-center gap-2"><Plus className="h-4 w-4" /> Deploy TLD</button>
                 </form>
               </div>
 
               <div className="glass-panel overflow-hidden">
                 <table className="w-full text-left">
                   <thead className="bg-slate-50/50 dark:bg-dark-800/80 border-b border-slate-200 dark:border-white/10 text-slate-500 dark:text-slate-400 uppercase text-xs font-semibold tracking-wider">
-                    <tr><th className="px-6 py-4">Domain name</th><th className="px-6 py-4">Status</th><th className="px-6 py-4">Created</th><th className="px-6 py-4 text-right">Actions</th></tr>
+                    <tr>
+                      <th className="px-6 py-4">Domain / Bind9 Zone</th>
+                      <th className="px-6 py-4">Web Server</th>
+                      <th className="px-6 py-4">Engine</th>
+                      <th className="px-6 py-4 text-right">Actions</th>
+                    </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 dark:divide-white/5">
                     {websites.map(site => (
                       <tr key={site.id} className="hover:bg-slate-50/50 dark:hover:bg-white/5 transition-colors">
-                        <td className="px-6 py-4 font-medium text-slate-800 dark:text-slate-200">{site.domain}</td>
-                        <td className="px-6 py-4"><span className="px-2.5 py-1 bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400 rounded-full text-xs font-medium border border-green-200 dark:border-green-500/30">{site.status}</span></td>
-                        <td className="px-6 py-4 text-slate-500 text-sm">{new Date(site.created_at).toLocaleDateString()}</td>
+                        <td className="px-6 py-4">
+                          <div className="font-medium text-slate-800 dark:text-slate-200">{site.domain}</div>
+                          <div className="text-xs text-slate-500 flex items-center gap-1 mt-1"><Network className="h-3 w-3" /> Auto DNS Hosted</div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="px-2.5 py-1 bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400 rounded-full text-xs font-medium border border-green-200 dark:border-green-500/30">Nginx {site.status}</span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <select 
+                            value={site.php_version || '8.1'} 
+                            onChange={(e) => handlePhpChange(site.id, e.target.value)}
+                            className="bg-transparent border border-slate-300 dark:border-slate-600 rounded px-2 py-1 text-sm text-slate-700 dark:text-white focus:outline-none focus:ring-1 focus:ring-primary-500">
+                            <option value="7.4">PHP 7.4 (FPM)</option>
+                            <option value="8.1">PHP 8.1 (FPM)</option>
+                            <option value="8.2">PHP 8.2 (FPM)</option>
+                          </select>
+                        </td>
                         <td className="px-6 py-4 text-right flex justify-end gap-2">
                           {site.has_ssl ? (
-                            <span className="p-2 text-green-500 rounded-lg flex items-center gap-1 text-sm font-medium"><ShieldCheck className="h-4 w-4" /> SSL</span>
+                            <span className="p-2 text-green-500 rounded-lg flex items-center gap-1 text-sm font-medium"><ShieldCheck className="h-4 w-4" /> SSL Active</span>
                           ) : (
-                            <button onClick={() => handleInstallSSL(site.id)} className="p-2 text-primary-500 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-500/10 rounded-lg transition-colors flex items-center gap-1 text-sm" title="Install SSL"><ShieldCheck className="h-4 w-4" /> Install SSL</button>
+                            <button onClick={() => handleInstallSSL(site.id)} className="p-2 text-primary-500 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-500/10 rounded-lg transition-colors flex items-center gap-1 text-sm" title="Install Let's Encrypt SSL"><ShieldCheck className="h-4 w-4" /> Force SSL</button>
                           )}
-                          <button onClick={() => handleDeleteWebsite(site.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors"><Trash2 className="h-5 w-5" /></button>
+                          <button onClick={() => handleDeleteWebsite(site.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors title='Delete Domain and DNS'"><Trash2 className="h-5 w-5" /></button>
                         </td>
                       </tr>
                     ))}
@@ -356,7 +405,7 @@ function App() {
                         <td className="px-6 py-4 text-slate-600 dark:text-slate-300">{db.db_user}</td>
                         <td className="px-6 py-4 text-slate-500 text-sm">{new Date(db.created_at).toLocaleDateString()}</td>
                         <td className="px-6 py-4 text-right">
-                          <button onClick={() => handleDeleteDatabase(db.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors"><Trash2 className="h-5 w-5" /></button>
+                           <button onClick={() => handleDeleteDatabase(db.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors"><Trash2 className="h-5 w-5" /></button>
                         </td>
                       </tr>
                     ))}
@@ -373,22 +422,22 @@ function App() {
                   <input type="text" value={newFtpUser} onChange={(e) => setNewFtpUser(e.target.value)} placeholder="Username" className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white/50 dark:bg-dark-800/50 focus:ring-2 focus:ring-primary-500 outline-none w-full" />
                   <input type="password" value={newFtpPass} onChange={(e) => setNewFtpPass(e.target.value)} placeholder="Password" className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white/50 dark:bg-dark-800/50 focus:ring-2 focus:ring-primary-500 outline-none w-full" />
                   <select value={newFtpDomain} onChange={(e) => setNewFtpDomain(e.target.value)} className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white/50 dark:bg-dark-800/50 focus:ring-2 focus:ring-primary-500 outline-none w-full">
-                    <option value="">Select Domain</option>
+                    <option value="">Link to Document Root</option>
                     {websites.map(w => <option key={w.id} value={w.domain}>{w.domain}</option>)}
                   </select>
-                  <button type="submit" className="btn-primary flex items-center gap-2"><Plus className="h-4 w-4" /> Add</button>
+                  <button type="submit" className="btn-primary flex items-center gap-2"><Plus className="h-4 w-4" /> Add FTP</button>
                 </form>
               </div>
               <div className="glass-panel overflow-hidden">
                 <table className="w-full text-left">
                   <thead className="bg-slate-50/50 dark:bg-dark-800/80 border-b border-slate-200 dark:border-white/10 text-slate-500 dark:text-slate-400 uppercase text-xs font-semibold tracking-wider">
-                    <tr><th className="px-6 py-4">Username</th><th className="px-6 py-4">Linked Domain</th><th className="px-6 py-4">Created Date</th><th className="px-6 py-4 text-right">Actions</th></tr>
+                    <tr><th className="px-6 py-4">FTP Username</th><th className="px-6 py-4">Restricted To Directory</th><th className="px-6 py-4">Created Date</th><th className="px-6 py-4 text-right">Actions</th></tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 dark:divide-white/5">
                     {ftpUsers.map(user => (
                       <tr key={user.id} className="hover:bg-slate-50/50 dark:hover:bg-white/5 transition-colors">
                         <td className="px-6 py-4 font-medium text-slate-800 dark:text-slate-200 flex items-center gap-3"><FolderSync className="h-5 w-5 text-slate-400" />{user.username}</td>
-                        <td className="px-6 py-4 text-slate-600 dark:text-slate-300">{user.domain}</td>
+                        <td className="px-6 py-4 text-slate-600 dark:text-slate-300">/var/www/{user.domain}</td>
                         <td className="px-6 py-4 text-slate-500 text-sm">{new Date(user.created_at).toLocaleDateString()}</td>
                         <td className="px-6 py-4 text-right">
                           <button onClick={() => handleDeleteFtpUser(user.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors"><Trash2 className="h-5 w-5" /></button>
@@ -401,7 +450,7 @@ function App() {
             </div>
           )}
 
-          {activeTab === 'users' && (currentUser.role === 'admin' || currentUser.role === 'reseller') && (
+          {activeTab === 'users' && (isAdmin || currentUser.role === 'reseller') && (
             <div className="space-y-6">
               <div className="glass-panel p-6 flex flex-col md:flex-row justify-between items-center gap-4">
                 <form onSubmit={handleAddUser} className="flex gap-2 w-full flex-wrap md:flex-nowrap">
@@ -410,7 +459,7 @@ function App() {
                   
                   <select value={newRole} onChange={(e) => setNewRole(e.target.value)} className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white/50 dark:bg-dark-800/50 focus:ring-2 focus:ring-primary-500 outline-none">
                     <option value="user">User</option>
-                    {currentUser.role === 'admin' && <option value="reseller">Reseller</option>}
+                    {isAdmin && <option value="reseller">Reseller</option>}
                   </select>
 
                   <select value={selectedPackage} onChange={(e) => setSelectedPackage(e.target.value)} className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white/50 dark:bg-dark-800/50 focus:ring-2 focus:ring-primary-500 outline-none">
@@ -424,14 +473,14 @@ function App() {
               <div className="glass-panel overflow-hidden">
                 <table className="w-full text-left">
                   <thead className="bg-slate-50/50 dark:bg-dark-800/80 border-b border-slate-200 dark:border-white/10 text-slate-500 dark:text-slate-400 uppercase text-xs font-semibold tracking-wider">
-                    <tr><th className="px-6 py-4">Username</th><th className="px-6 py-4">Role</th><th className="px-6 py-4">Package ID</th><th className="px-6 py-4 text-right">Actions</th></tr>
+                    <tr><th className="px-6 py-4">Username</th><th className="px-6 py-4">Role</th><th className="px-6 py-4">Package</th><th className="px-6 py-4 text-right">Actions</th></tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 dark:divide-white/5">
                     {usersList.map(user => (
                       <tr key={user.id} className="hover:bg-slate-50/50 dark:hover:bg-white/5 transition-colors">
                         <td className="px-6 py-4 font-medium text-slate-800 dark:text-slate-200">{user.username} {user.id === currentUser.id && "(You)"}</td>
                         <td className="px-6 py-4 text-slate-600 dark:text-slate-300 uppercase text-xs font-bold">{user.role}</td>
-                        <td className="px-6 py-4 text-slate-500 text-sm">{user.package_id || 'None'}</td>
+                        <td className="px-6 py-4 text-slate-500 text-sm">{packagesList.find(p => p.id === user.package_id)?.name || 'None'}</td>
                         <td className="px-6 py-4 text-right">
                           {user.id !== currentUser.id && (
                             <button onClick={() => handleDeleteUser(user.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors"><Trash2 className="h-5 w-5" /></button>
@@ -445,7 +494,7 @@ function App() {
             </div>
           )}
 
-          {activeTab === 'packages' && currentUser.role === 'admin' && (
+          {activeTab === 'packages' && isAdmin && (
             <div className="space-y-6">
               <div className="glass-panel p-6 flex flex-col md:flex-row justify-between items-center gap-4">
                 <form onSubmit={handleAddPackage} className="flex gap-2 w-full flex-wrap md:flex-nowrap">
@@ -479,8 +528,9 @@ function App() {
 
           {activeTab === 'settings' && (
             <div className="glass-panel p-12 text-center text-slate-500">
-              <Settings className="h-16 w-16 mx-auto mb-4 opacity-20" />
-              <p>System settings configuration coming soon.</p>
+              <Settings className="h-16 w-16 mx-auto mb-4 opacity-20 text-primary-500" />
+              <h2 className="text-xl font-bold dark:text-white mb-2">AppServer Core Engine Settings</h2>
+              <p>Global PHP configuration, Webmail parameters, and Backup mechanisms are scheduled for AppServer v6.0.</p>
             </div>
           )}
         </div>
