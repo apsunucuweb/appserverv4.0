@@ -11,7 +11,7 @@ echo "          AppServer Güncelleniyor         "
 echo "=========================================="
 
 echo "[1/4] GitHub'dan son değişiklikler çekiliyor..."
-cd /opt/apsunucuv4.0
+cd /opt/appserverv4.0
 git pull origin main
 
 echo "[2/4] Backend bağımlılıkları güncelleniyor..."
