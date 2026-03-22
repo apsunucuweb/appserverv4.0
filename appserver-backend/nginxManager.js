@@ -83,12 +83,12 @@ async function deleteVhost(domain) {
 async function reloadNginx() {
     if (isLinux) {
         try {
-            await execPromise('systemctl reload nginx');
-            console.log('Nginx başarıyla yeniden yüklendi.');
+            await execPromise('systemctl restart nginx');
+            console.log('Nginx başarıyla yeniden başlatıldı.');
             return true;
         } catch (error) {
-            console.error('Nginx yeniden yüklenemedi:', error);
-            throw new Error('Nginx servisine reload komutu gönderilemedi. Root izinlerini kontrol edin.');
+            console.error('Nginx çalıştırılamadı:', error.message);
+            throw new Error(`Nginx yeniden başlatılamadı! Detay: ${error.message}`);
         }
     } else {
         console.log('[MOCK] Nginx systemctl reload komutu çalıştırıldı gibi kabul edildi (Dev Mod).');

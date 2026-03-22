@@ -14,14 +14,32 @@ if (!isLinux) {
     }
 }
 
-async function createDnsZone(domain, ipAddress, ns1 = 'ns1', ns2 = 'ns2') {
+async function createDnsZone(domain, ipAddress, ns1 = 'ns1', ns2 = 'ns2', customRecords = []) {
     if (!isLinux) {
-        console.log(`[MOCK] DNS Zone created for ${domain} pointing to ${ipAddress} with NS: ${ns1}, ${ns2}`);
+        console.log(`[MOCK] DNS Zone created for ${domain} pointing to ${ipAddress} with NS: ${ns1}, ${ns2}. Custom Records: ${customRecords.length}`);
         return true;
     }
 
     const zoneFilePath = path.join(BIND_DIR, `db.${domain}`);
     
+    // Default Web Records
+    let defaultRecords = `
+@       IN      NS      ${ns1}.
+@       IN      NS      ${ns2}.
+@       IN      A       ${ipAddress}
+www     IN      A       ${ipAddress}
+mail    IN      A       ${ipAddress}
+ftp     IN      A       ${ipAddress}
+`;
+    // Add User Custom Records
+    customRecords.forEach(rec => {
+        if(rec.type === 'MX') {
+            defaultRecords += `${rec.name} IN MX ${rec.priority} ${rec.value}\n`;
+        } else {
+            defaultRecords += `${rec.name} IN ${rec.type} ${rec.value}\n`;
+        }
+    });
+
     // Zone Content
     const zoneContent = `; BIND data file for ${domain}
 $TTL    604800
@@ -31,13 +49,7 @@ $TTL    604800
                           86400         ; Retry
                         2419200         ; Expire
                          604800 )       ; Negative Cache TTL
-;
-@       IN      NS      ${ns1}.
-@       IN      NS      ${ns2}.
-@       IN      A       ${ipAddress}
-www     IN      A       ${ipAddress}
-mail    IN      A       ${ipAddress}
-ftp     IN      A       ${ipAddress}
+; ${defaultRecords}
 `;
 
     fs.writeFileSync(zoneFilePath, zoneContent);

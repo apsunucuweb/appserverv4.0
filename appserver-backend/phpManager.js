@@ -54,7 +54,43 @@ async function changePhpVersion(domain, version) {
     return true;
 }
 
+async function getPhpSettings(domain) {
+    const webRoot = isLinux ? `/var/www/${domain}/public_html` : path.join(__dirname, 'mock_var_www', domain, 'public_html');
+    const iniPath = path.join(webRoot, '.user.ini');
+
+    const defaultSettings = { 
+        memory_limit: '128M', upload_max_filesize: '64M', post_max_size: '64M', max_execution_time: '30'
+    };
+
+    if (fs.existsSync(iniPath)) {
+        const content = fs.readFileSync(iniPath, 'utf8');
+        content.split('\n').forEach(line => {
+            if (line.includes('=')) {
+                const [k, v] = line.split('=');
+                if (defaultSettings.hasOwnProperty(k.trim())) defaultSettings[k.trim()] = v.trim();
+            }
+        });
+    }
+    return defaultSettings;
+}
+
+async function savePhpSettings(domain, settings) {
+    const webRoot = isLinux ? `/var/www/${domain}/public_html` : path.join(__dirname, 'mock_var_www', domain, 'public_html');
+    if (!fs.existsSync(webRoot)) fs.mkdirSync(webRoot, { recursive: true });
+    
+    const iniPath = path.join(webRoot, '.user.ini');
+
+    let iniContent = '; AppServer Generated User INI\n';
+    for (const [key, value] of Object.entries(settings)) {
+        iniContent += `${key} = ${value}\n`;
+    }
+    fs.writeFileSync(iniPath, iniContent);
+    return true;
+}
+
 module.exports = {
     changePhpVersion,
+    getPhpSettings,
+    savePhpSettings,
     SUPPORTED_PHPS
 };

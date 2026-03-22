@@ -14,11 +14,18 @@ const dnsManager = require('./dnsManager');
 const phpManager = require('./phpManager');
 const fileManager = require('./fileManager');
 const backupManager = require('./backupManager');
+const serviceManager = require('./serviceManager');
+const cronManager = require('./cronManager');
+const mailManager = require('./mailManager');
+const installerManager = require('./installerManager');
+const securityManager = require('./securityManager');
 const fs = require('fs');
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT_ADMIN = process.env.PORT_ADMIN || 3001;
+const PORT_USER = process.env.PORT_USER || 3002;
 const JWT_SECRET = 'appserver-super-secret-key-123';
+const isLinux = process.platform === 'linux';
 
 // Middleware
 app.use(cors());
@@ -93,6 +100,40 @@ const db = new sqlite3.Database(dbPath, (err) => {
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(user_id) REFERENCES users(id)
             )`);
+            
+            // DNS Records
+            db.run(`CREATE TABLE IF NOT EXISTS dns_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                domain TEXT NOT NULL,
+                name TEXT NOT NULL,
+                type TEXT NOT NULL,
+                value TEXT NOT NULL,
+                priority INTEGER,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )`);
+            
+            // Cron Jobs
+            db.run(`CREATE TABLE IF NOT EXISTS cron_jobs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                domain TEXT NOT NULL,
+                minute TEXT NOT NULL,
+                hour TEXT NOT NULL,
+                day TEXT NOT NULL,
+                month TEXT NOT NULL,
+                weekday TEXT NOT NULL,
+                command TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )`);
+            
+            // Mail Users
+            db.run(`CREATE TABLE IF NOT EXISTS mail_users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                domain TEXT NOT NULL,
+                quota TEXT DEFAULT '1024M',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )`);
 
             // Settings
             db.run(`CREATE TABLE IF NOT EXISTS settings (
@@ -112,6 +153,70 @@ const db = new sqlite3.Database(dbPath, (err) => {
                     }
                 });
             });
+            
+            // Generate default AppServer Welcome Page on Port 80
+            try {
+                const defaultWebRoot = isLinux ? '/var/www/html' : path.join(__dirname, 'mock_var_www', 'html');
+                if (!fs.existsSync(defaultWebRoot)) fs.mkdirSync(defaultWebRoot, { recursive: true });
+                
+                const indexContent = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>AppServer - Hoşgeldiniz</title>
+    <style>
+        body { font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif; background-color: #0f172a; color: #f8fafc; text-align: center; padding-top: 100px; margin: 0; }
+        h1 { color: #38bdf8; font-size: 3.5rem; margin-bottom: 10px; }
+        p { font-size: 1.2rem; color: #94a3b8; }
+        .dev-info { margin-top: 50px; padding: 20px; border-top: 1px solid #1e293b; color: #cbd5e1; display: inline-block; text-align: left; background: rgba(30, 41, 59, 0.5); border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .dev-info h3 { margin-top: 0; color: #38bdf8; }
+        .dev-info span { color: #f8fafc; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>AppServer'e Hoşgeldiniz</h1>
+    <p>Sunucunuz başarıyla kuruldu ve çalışıyor.</p>
+    <div class="dev-info">
+        <h3>Yazılımcı Bilgileri</h3>
+        <p>Geliştirici: <span>AppServer Core Team</span></p>
+        <p>Sürüm: <span>AppServer v6.1</span></p>
+        <p>Panel Erişimi:<br> • Yönetici & Alt Kullanıcı: <span>Port 3001</span><br> • Normal Kullanıcı: <span>Port 3002</span></p>
+    </div>
+</body>
+</html>`;
+                fs.writeFileSync(path.join(defaultWebRoot, 'index.html'), indexContent);
+
+                const defaultConfPath = isLinux ? '/etc/nginx/sites-available/default' : path.join(__dirname, 'mock_nginx', 'sites-available', 'default');
+                const defaultNginxConf = `server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+    root ${defaultWebRoot.replace(/\\/g, '/')};
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+}`;
+                // Only create the default if sites-available exists
+                const sitesAvailableDir = path.dirname(defaultConfPath);
+                if (!fs.existsSync(sitesAvailableDir)) fs.mkdirSync(sitesAvailableDir, { recursive: true });
+                
+                fs.writeFileSync(defaultConfPath, defaultNginxConf);
+                
+                const defaultSymlink = isLinux ? '/etc/nginx/sites-enabled/default' : path.join(__dirname, 'mock_nginx', 'sites-enabled', 'default');
+                const sitesEnabledDir = path.dirname(defaultSymlink);
+                if (!fs.existsSync(sitesEnabledDir)) fs.mkdirSync(sitesEnabledDir, { recursive: true });
+
+                if (!fs.existsSync(defaultSymlink)) {
+                    if (isLinux) fs.symlinkSync(defaultConfPath, defaultSymlink);
+                    else fs.copyFileSync(defaultConfPath, defaultSymlink);
+                }
+                
+                nginxManager.reloadNginx().catch(e => console.log('Nginx reload (default site) failed.'));
+            } catch (err) {
+                console.error('Varsayılan Nginx ayarları yüklenemedi:', err.message);
+            }
         });
     }
 });
@@ -147,6 +252,15 @@ app.post('/api/auth/login', (req, res) => {
     const { username, password } = req.body;
     db.get('SELECT * FROM users WHERE username = ?', [username], async (err, user) => {
         if (err || !user) return res.status(401).json({ error: 'Invalid credentials' });
+        
+        const reqPort = req.socket.localPort;
+        if (reqPort === parseInt(PORT_ADMIN) && user.role === 'user') {
+            return res.status(403).json({ error: 'Bu porttan (3001) sadece yönetici ve alt kullanıcılar giriş yapabilir.' });
+        }
+        if (reqPort === parseInt(PORT_USER) && user.role !== 'user') {
+            return res.status(403).json({ error: 'Bu porttan (3002) sadece normal kullanıcılar (cPanel arayüzü) giriş yapabilir.' });
+        }
+
         const isMatch = await bcrypt.compare(password, user.password_hash);
         if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
         const token = jwt.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET, { expiresIn: '24h' });
@@ -192,6 +306,40 @@ app.get('/api/system', authenticate, async (req, res) => {
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
+});
+
+app.post('/api/system/update', authenticate, requireRole(['admin']), (req, res) => {
+    const { exec } = require('child_process');
+    const updateScript = path.join(__dirname, '..', 'update.sh');
+    
+    exec(`bash ${updateScript}`, (error, stdout, stderr) => {
+        if (error) console.error(`Güncelleme hatası: ${error}`);
+    });
+    
+    res.json({ success: true, message: 'Güncelleme başarıyla başlatıldı, sistem yakında yeniden başlayacaktır.' });
+});
+
+app.get('/api/system/services', authenticate, requireRole(['admin']), async (req, res) => {
+    try {
+        const results = await serviceManager.getAllServices();
+        res.json(results);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/system/services/control', authenticate, requireRole(['admin']), async (req, res) => {
+    const { serviceId, action } = req.body;
+    try {
+        const result = await serviceManager.controlService(serviceId, action);
+        res.json(result);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/system/logs', authenticate, requireRole(['admin']), async (req, res) => {
+    const { logPath, lines } = req.query;
+    try {
+        const logData = await serviceManager.tailLog(logPath, parseInt(lines) || 100);
+        res.json({ logs: logData });
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // -- USERS & PACKAGES ROUTES --
@@ -404,6 +552,213 @@ app.delete('/api/ftp/:id', authenticate, (req, res) => {
     });
 });
 
+// -- DNS ZONE EDITOR ROUTES --
+app.get('/api/dns/:domain', authenticate, async (req, res) => {
+    const { domain } = req.params;
+    db.get(`SELECT domain FROM websites WHERE domain = ? AND ${getVisibleUsersFilter(req.user)}`, [domain], async (err, row) => {
+        if (err || !row) return res.status(404).json({ error: 'Domain not found or access denied' });
+        const records = await dbAll('SELECT * FROM dns_records WHERE domain = ?', [domain]);
+        res.json(records);
+    });
+});
+
+app.post('/api/dns/:domain', authenticate, (req, res) => {
+    const { domain } = req.params;
+    const { name, type, value, priority } = req.body;
+    db.get(`SELECT domain FROM websites WHERE domain = ? AND ${getVisibleUsersFilter(req.user)}`, [domain], async (err, row) => {
+        if (err || !row) return res.status(404).json({ error: 'Domain not found' });
+        try {
+            const result = await dbRun('INSERT INTO dns_records (domain, name, type, value, priority) VALUES (?, ?, ?, ?, ?)', [domain, name, type, value, priority || null]);
+            
+            // Re-generate DNS Zone
+            const allRecords = await dbAll('SELECT * FROM dns_records WHERE domain = ?', [domain]);
+            const settingsRows = await dbAll('SELECT * FROM settings');
+            const settings = {}; settingsRows.forEach(s => settings[s.key] = s.value);
+            
+            await dnsManager.createDnsZone(domain, settings.server_ip || '127.0.0.1', settings.ns1 || 'ns1', settings.ns2 || 'ns2', allRecords);
+            
+            res.json({ success: true, id: result.lastID });
+        } catch (error) { res.status(500).json({ error: error.message }); }
+    });
+});
+
+app.delete('/api/dns/:domain/:id', authenticate, (req, res) => {
+    const { domain, id } = req.params;
+    db.get(`SELECT domain FROM websites WHERE domain = ? AND ${getVisibleUsersFilter(req.user)}`, [domain], async (err, row) => {
+        if (err || !row) return res.status(404).json({ error: 'Domain not found' });
+        try {
+            await dbRun('DELETE FROM dns_records WHERE id = ? AND domain = ?', [id, domain]);
+            
+            // Re-generate DNS Zone
+            const allRecords = await dbAll('SELECT * FROM dns_records WHERE domain = ?', [domain]);
+            const settingsRows = await dbAll('SELECT * FROM settings');
+            const settings = {}; settingsRows.forEach(s => settings[s.key] = s.value);
+            
+            await dnsManager.createDnsZone(domain, settings.server_ip || '127.0.0.1', settings.ns1 || 'ns1', settings.ns2 || 'ns2', allRecords);
+            
+            res.json({ deleted: true });
+        } catch (error) { res.status(500).json({ error: error.message }); }
+    });
+});
+
+// -- PHP INI SETTINGS --
+app.get('/api/websites/:id/php-ini', authenticate, (req, res) => {
+    const { id } = req.params;
+    db.get(`SELECT domain FROM websites WHERE id = ? AND ${getVisibleUsersFilter(req.user)}`, [id], async (err, row) => {
+        if (err || !row) return res.status(404).json({ error: 'Website not found' });
+        try {
+            const settings = await phpManager.getPhpSettings(row.domain);
+            res.json(settings);
+        } catch (error) { res.status(500).json({ error: error.message }); }
+    });
+});
+app.post('/api/websites/:id/php-ini', authenticate, (req, res) => {
+    const { id } = req.params;
+    const settings = req.body;
+    db.get(`SELECT domain FROM websites WHERE id = ? AND ${getVisibleUsersFilter(req.user)}`, [id], async (err, row) => {
+        if (err || !row) return res.status(404).json({ error: 'Website not found' });
+        try {
+            await phpManager.savePhpSettings(row.domain, settings);
+            res.json({ success: true });
+        } catch (error) { res.status(500).json({ error: error.message }); }
+    });
+});
+
+// -- CRON JOBS ROUTE --
+app.get('/api/cron', authenticate, async (req, res) => {
+    const filter = req.user.role === 'admin' ? '1=1' : `domain IN (SELECT domain FROM websites WHERE ${getVisibleUsersFilter(req.user)})`;
+    try {
+        const rows = await dbAll(`SELECT * FROM cron_jobs WHERE ${filter}`);
+        res.json(rows);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/cron', authenticate, async (req, res) => {
+    const { domain, minute, hour, day, month, weekday, command } = req.body;
+    db.get(`SELECT domain FROM websites WHERE domain = ? AND ${getVisibleUsersFilter(req.user)}`, [domain], async (err, row) => {
+        if (err || !row) return res.status(404).json({ error: 'Domain not found' });
+        try {
+            await dbRun('INSERT INTO cron_jobs (domain, minute, hour, day, month, weekday, command) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                [domain, minute, hour, day, month, weekday, command]);
+            const allCrons = await dbAll('SELECT * FROM cron_jobs');
+            await cronManager.regenerateCrons(allCrons);
+            res.json({ success: true });
+        } catch (error) { res.status(500).json({ error: error.message }); }
+    });
+});
+
+app.delete('/api/cron/:id', authenticate, async (req, res) => {
+    const { id } = req.params;
+    const filter = req.user.role === 'admin' ? '1=1' : `domain IN (SELECT domain FROM websites WHERE ${getVisibleUsersFilter(req.user)})`;
+    db.get(`SELECT * FROM cron_jobs WHERE id = ? AND ${filter}`, [id], async (err, row) => {
+        if (err || !row) return res.status(404).json({ error: 'Cron not found' });
+        try {
+            await dbRun('DELETE FROM cron_jobs WHERE id = ?', [id]);
+            const allCrons = await dbAll('SELECT * FROM cron_jobs');
+            await cronManager.regenerateCrons(allCrons);
+            res.json({ deleted: true });
+        } catch (error) { res.status(500).json({ error: error.message }); }
+    });
+});
+
+// -- EMAIL ACCOUNTS --
+app.get('/api/mail', authenticate, async (req, res) => {
+    const filter = req.user.role === 'admin' ? '1=1' : `domain IN (SELECT domain FROM websites WHERE ${getVisibleUsersFilter(req.user)})`;
+    try {
+        const rows = await dbAll(`SELECT id, username, domain, quota, created_at FROM mail_users WHERE ${filter}`);
+        res.json(rows);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/mail', authenticate, async (req, res) => {
+    const { username, domain, password, quota } = req.body;
+    const fullEmail = `${username}@${domain}`;
+    db.get(`SELECT domain FROM websites WHERE domain = ? AND ${getVisibleUsersFilter(req.user)}`, [domain], async (err, row) => {
+        if (err || !row) return res.status(404).json({ error: 'Domain not found' });
+        try {
+            const hash = await bcrypt.hash(password, 10);
+            await dbRun('INSERT INTO mail_users (username, password_hash, domain, quota) VALUES (?, ?, ?, ?)',
+                [fullEmail, hash, domain, quota || '1024M']);
+            const allAccounts = await dbAll('SELECT username FROM mail_users');
+            await mailManager.rebuildPostfixMaps(allAccounts);
+            res.json({ success: true });
+        } catch (error) { res.status(500).json({ error: error.message }); }
+    });
+});
+
+app.delete('/api/mail/:id', authenticate, async (req, res) => {
+    const { id } = req.params;
+    const filter = req.user.role === 'admin' ? '1=1' : `domain IN (SELECT domain FROM websites WHERE ${getVisibleUsersFilter(req.user)})`;
+    db.get(`SELECT * FROM mail_users WHERE id = ? AND ${filter}`, [id], async (err, row) => {
+        if (err || !row) return res.status(404).json({ error: 'Mail account not found' });
+        try {
+            await dbRun('DELETE FROM mail_users WHERE id = ?', [id]);
+            const allAccounts = await dbAll('SELECT username FROM mail_users');
+            await mailManager.rebuildPostfixMaps(allAccounts);
+            res.json({ deleted: true });
+        } catch (error) { res.status(500).json({ error: error.message }); }
+    });
+});
+
+// -- 1-CLICK APP INSTALLER --
+app.post('/api/installer/:app', authenticate, async (req, res) => {
+    const { domain } = req.body;
+    const { app: appName } = req.params;
+    db.get(`SELECT domain FROM websites WHERE domain = ? AND ${getVisibleUsersFilter(req.user)}`, [domain], async (err, row) => {
+        if (err || !row) return res.status(404).json({ error: 'Domain not found or access denied' });
+        try {
+            if (appName === 'wordpress') {
+                await installerManager.installWordpress(row.domain);
+            } else if (appName === 'laravel') {
+                await installerManager.installLaravel(row.domain);
+            } else {
+                return res.status(400).json({ error: 'Softaculous Error: Unsupported Application' });
+            }
+            res.json({ success: true, message: `${appName.toUpperCase()} installed successfully on ${row.domain}.` });
+        } catch (error) { res.status(500).json({ error: error.message }); }
+    });
+});
+
+// -- SECURITY CENTER (UFW & FAIL2BAN) --
+app.get('/api/security/firewall', authenticate, async (req, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Root Access Required' });
+    try { const status = await securityManager.getFirewallStatus(); res.json({ status }); } 
+    catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/security/firewall', authenticate, async (req, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Root Access Required' });
+    const { op, port, protocol, ruleNum } = req.body;
+    try {
+        let msg = '';
+        if (op === 'enable') msg = await securityManager.enableFirewall();
+        else if (op === 'disable') msg = await securityManager.disableFirewall();
+        else if (op === 'add') msg = await securityManager.addFirewallRule('allow', port, protocol);
+        else if (op === 'delete') msg = await securityManager.deleteFirewallRule(ruleNum);
+        res.json({ success: true, message: msg });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/security/fail2ban', authenticate, async (req, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Root Access Required' });
+    try {
+        const status = await securityManager.getFail2BanStatus();
+        const sshd = await securityManager.getFail2BanJailStatus('sshd');
+        res.json({ status, sshd });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/security/fail2ban', authenticate, async (req, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Root Access Required' });
+    const { op, jail, ip } = req.body;
+    try {
+        let msg = '';
+        if (op === 'ban') msg = await securityManager.banIp(jail || 'sshd', ip);
+        else if (op === 'unban') msg = await securityManager.unbanIp(jail || 'sshd', ip);
+        res.json({ success: true, message: msg });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // -- APPSERVER V6.0 ENDPOINTS (File Manager, Backups, PMA) --
 
 app.get('/api/websites/:id/files', authenticate, (req, res) => {
@@ -503,7 +858,11 @@ app.use((req, res) => {
     res.sendFile(path.join(frontendDistPath, 'index.html'));
 });
 
-// Start server
-app.listen(PORT, () => {
-    console.log(`AppServer Backend running on http://localhost:${PORT}`);
+// Start servers on ports
+app.listen(PORT_ADMIN, () => {
+    console.log(`[AppServer V6.1] Yonetici/Alt Kullanici Paneli (WHM): http://localhost:${PORT_ADMIN}`);
+});
+
+app.listen(PORT_USER, () => {
+    console.log(`[AppServer V6.1] Normal Kullanici Paneli (cPanel)  : http://localhost:${PORT_USER}`);
 });

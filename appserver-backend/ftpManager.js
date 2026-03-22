@@ -16,18 +16,20 @@ async function createFtpUser(username, password, domain) {
     
     try {
         // Kullanıcının Linux üzerinde zaten mevcut olup olmadığını kontrol et
+        let userExists = false;
         try {
             await execPromise(`id -u ${username}`);
-            throw new Error(`Kullanıcı "${username}" sistemde zaten mevcut.`);
+            userExists = true;
         } catch (e) {
-            if (e.message.includes('zaten mevcut')) throw e;
-            // id komutu hata verirse kullanıcı yok demektir, devam et.
+            userExists = false;
         }
 
         const homeDir = `/var/www/${domain}/public_html`;
         
-        // 1. Kullanıcıyı oluştur (Shell erişimi olmadan)
-        await execPromise(`useradd -d ${homeDir} -s /bin/false ${username}`);
+        // 1. Kullanıcıyı oluştur (Sadece yoksa)
+        if (!userExists) {
+            await execPromise(`useradd -d ${homeDir} -s /bin/false ${username}`);
+        }
         
         // 2. Şifreyi belirle (chpasswd ile)
         await execPromise(`echo "${username}:${password}" | chpasswd`);
