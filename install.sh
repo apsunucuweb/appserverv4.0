@@ -32,8 +32,9 @@ fi
 echo "[1.5/4] Webmail (SnappyMail) Kuruluyor..."
 mkdir -p /var/www/webmail
 cd /var/www/webmail
-wget -qO snappymail.zip https://snappymail.eu/repository/latest.zip
-unzip -q snappymail.zip -d .
+LATEST_SNAPPY=$(curl -s https://api.github.com/repos/the-djmaze/snappymail/releases/latest | grep "browser_download_url.*zip" | cut -d '"' -f 4)
+wget -qO snappymail.zip "$LATEST_SNAPPY"
+unzip -q -o snappymail.zip -d .
 rm snappymail.zip
 chown -R www-data:www-data /var/www/webmail
 chmod -R 755 /var/www/webmail
@@ -66,7 +67,7 @@ cd appserver-backend
 pm2 stop appserver-panel 2>/dev/null || true
 pm2 start server.js --name "appserver-panel"
 pm2 save
-pm2 startup | tail -n 1 | bash
+env PATH=$PATH:/usr/bin pm2 startup systemd -u root --hp /root
 
 echo "=========================================="
 echo "KURULUM BAŞARIYLA TAMAMLANDI! 🚀"
