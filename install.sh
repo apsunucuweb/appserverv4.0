@@ -73,7 +73,6 @@ env PATH=$PATH:/usr/bin pm2 startup systemd -u root --hp /root
 
 # Temizlik ve Nginx Yeniden Başlatma
 rm -f /var/www/html/index.nginx-debian.html 2>/dev/null || true
-rm -f /var/www/html/index.html 2>/dev/null || true
 systemctl restart nginx || true
 
 echo "=========================================="
