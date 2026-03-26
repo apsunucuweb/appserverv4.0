@@ -64,7 +64,7 @@ cd ..
 echo "[4/4] NPM PM2 Arka Plan Servisi Ayarlanıyor..."
 npm install -g pm2
 cd appserver-backend
-pm2 stop appserver-panel 2>/dev/null || true
+pm2 delete appserver-panel 2>/dev/null || true
 pm2 start server.js --name "appserver-panel"
 pm2 save
 env PATH=$PATH:/usr/bin pm2 startup systemd -u root --hp /root
