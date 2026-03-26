@@ -69,6 +69,10 @@ pm2 start server.js --name "appserver-panel"
 pm2 save
 env PATH=$PATH:/usr/bin pm2 startup systemd -u root --hp /root
 
+# Temizlik ve Nginx Yeniden Başlatma
+rm -f /var/www/html/index.nginx-debian.html 2>/dev/null || true
+systemctl restart nginx || true
+
 echo "=========================================="
 echo "KURULUM BAŞARIYLA TAMAMLANDI! 🚀"
 echo "Tüm sistemler aktif edildi."
