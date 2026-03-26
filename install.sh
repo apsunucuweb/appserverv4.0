@@ -64,13 +64,16 @@ cd ..
 echo "[4/4] NPM PM2 Arka Plan Servisi Ayarlanıyor..."
 npm install -g pm2
 cd appserver-backend
+pm2 delete server 2>/dev/null || true
 pm2 delete appserver-panel 2>/dev/null || true
+pm2 delete all 2>/dev/null || true
 pm2 start server.js --name "appserver-panel"
 pm2 save
 env PATH=$PATH:/usr/bin pm2 startup systemd -u root --hp /root
 
 # Temizlik ve Nginx Yeniden Başlatma
 rm -f /var/www/html/index.nginx-debian.html 2>/dev/null || true
+rm -f /var/www/html/index.html 2>/dev/null || true
 systemctl restart nginx || true
 
 echo "=========================================="
