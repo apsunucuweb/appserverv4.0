@@ -29,7 +29,10 @@ async function createVhost(domain) {
     // Varsayılan index.html dosyası yazma
     const indexContent = `<!DOCTYPE html>
 <html>
-<head><title>Welcome to ${domain}!</title></head>
+<head>
+    <meta charset="UTF-8">
+    <title>Welcome to ${domain}!</title>
+</head>
 <body style="font-family: sans-serif; text-align: center; margin-top: 100px;">
     <h1>Mükemmel! ${domain} başarıyla kuruldu.</h1>
     <p>Bu site AppServer Web Hosting Yönetim Paneli tarafından otomatik oluşturuldu.</p>
@@ -42,10 +45,33 @@ async function createVhost(domain) {
     listen 80;
     server_name ${domain} www.${domain};
     root ${isLinux ? `/var/www/${domain}/public_html` : webRoot.replace(/\\/g, '/')};
-    index index.html index.php;
+    index index.php index.html index.htm;
+    charset utf-8;
 
     location / {
-        try_files $uri $uri/ =404;
+        try_files $uri $uri/ /index.php?$args;
+    }
+
+    # Global Webmail Access
+    location ^~ /webmail {
+        alias /var/www/webmail;
+        index index.php index.html;
+        
+        location ~ \\.php$ {
+            include snippets/fastcgi-php.conf;
+            fastcgi_pass unix:/var/run/php/php8.1-fpm.sock;
+            fastcgi_param SCRIPT_FILENAME $request_filename;
+        }
+    }
+
+    # AppServer PHP-FPM Placeholder
+    location ~ \\.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/var/run/php/php8.1-fpm.sock;
+    }
+
+    location ~ /\\.ht {
+        deny all;
     }
 }`;
 

@@ -22,14 +22,20 @@ async function createDnsZone(domain, ipAddress, ns1 = 'ns1', ns2 = 'ns2', custom
 
     const zoneFilePath = path.join(BIND_DIR, `db.${domain}`);
     
+    // Ensure ns ends with dot
+    const cleanNs1 = ns1.endsWith('.') ? ns1 : `${ns1}.`;
+    const cleanNs2 = ns2.endsWith('.') ? ns2 : `${ns2}.`;
+
     // Default Web Records
     let defaultRecords = `
-@       IN      NS      ${ns1}.
-@       IN      NS      ${ns2}.
+@       IN      NS      ${cleanNs1}
+@       IN      NS      ${cleanNs2}
 @       IN      A       ${ipAddress}
 www     IN      A       ${ipAddress}
 mail    IN      A       ${ipAddress}
 ftp     IN      A       ${ipAddress}
+ns1     IN      A       ${ipAddress}
+ns2     IN      A       ${ipAddress}
 `;
     // Add User Custom Records
     customRecords.forEach(rec => {

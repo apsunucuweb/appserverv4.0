@@ -1,72 +1,77 @@
 #!/bin/bash
-# AppServer Linux Kurulum Betiği (Ubuntu/Debian)
+# AppServer V6.2 - Otomatik GitHub Kurulum Betiği
+# Bu betik yepyeni bir Ubuntu/Debian sunucusunda çalıştırılmalıdır.
 
 if [ "$EUID" -ne 0 ]; then
-  echo "Lütfen bu betiği root olarak çalıştırın (sudo ./install.sh)"
+  echo "Lütfen bu betiği root olarak çalıştırın (sudo bash install.sh <github_linki>)"
   exit 1
 fi
 
+REPO_URL=${1:-"https://github.com/apsunucuweb/appserverv4.0.git"}
+
 echo "=========================================="
-echo "          AppServer Linux Kurulumu        "
+echo "     AppServer V6.2 Kurulumu Başlıyor     "
 echo "=========================================="
 
-echo "[1/4] Sistem Gereksinimleri Kontrol Ediliyor (Node.js, Nginx, Certbot, VSFTPD)..."
+echo "[1/4] Gelişmiş Sistem Gereksinimleri Yükleniyor (Sürebilir)..."
+export DEBIAN_FRONTEND=noninteractive
+echo "postfix postfix/main_mailer_type string 'Internet Site'" | debconf-set-selections
+echo "postfix postfix/mailname string 'appserver.local'" | debconf-set-selections
+
+apt-get update -y
+# Panelin UFW, Fail2Ban, BIND9, MariaDB, Nginx, Postfix, Dovecot vb tüm özellikleri için gerekli altyapı:
+apt-get install -yq curl wget git unzip vim ufw fail2ban nginx mariadb-server bind9 bind9utils bind9-doc postfix dovecot-imapd dovecot-pop3d certbot python3-certbot-nginx vsftpd php-fpm php-mysql composer
+
+# Node.js Kurulumu (Eğer yoksa)
 if ! command -v node > /dev/null; then
-  echo "Node.js bulunamadı. Kuruluyor (Node.js 20.x)..."
+  echo "Node.js (20.x) Kuruluyor..."
   curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
   apt-get install -y nodejs
 fi
 
-# Nginx, Certbot ve VSFTPD kurulumu
-apt-get update
-apt-get install -y nginx certbot python3-certbot-nginx vsftpd
+echo "[1.5/4] Webmail (SnappyMail) Kuruluyor..."
+mkdir -p /var/www/webmail
+cd /var/www/webmail
+wget -qO snappymail.zip https://snappymail.eu/repository/latest.zip
+unzip -q snappymail.zip -d .
+rm snappymail.zip
+chown -R www-data:www-data /var/www/webmail
+chmod -R 755 /var/www/webmail
 
-# VSFTPD Yapılandırması (Kullanıcıları kendi dizinlerine hapsetmek için)
-echo "allow_writeable_chroot=YES" >> /etc/vsftpd.conf
-sed -i 's/#chroot_local_user=YES/chroot_local_user=YES/g' /etc/vsftpd.conf
-# /bin/false kullanarak FTP girenlerin SSH girmesini engellemek için pam ayarları
-echo "/bin/false" >> /etc/shells
-systemctl restart vsftpd
-systemctl enable vsftpd
+echo "[2/4] Proje GitHub'dan Klonlanıyor: $REPO_URL"
+APPSERVER_DIR="/opt/appserver"
+if [ -d "$APPSERVER_DIR" ]; then
+  echo "Uyarı: $APPSERVER_DIR dizini zaten var. Önceki sürüm yedekleniyor..."
+  mv $APPSERVER_DIR "${APPSERVER_DIR}_backup_$(date +%s)"
+fi
 
-echo "[2/4] AppServer Backend Bağımlılıkları Kuruluyor..."
+git clone "$REPO_URL" $APPSERVER_DIR
+cd $APPSERVER_DIR
+
+echo "[3/4] Backend ve Frontend Bağımlılıkları Derleniyor..."
+# Backend
 cd appserver-backend
 npm install
 cd ..
 
-echo "[3/4] AppServer Frontend Arayüzü Derleniyor..."
+# Frontend
 cd appserver-frontend
 npm install
 npm run build
 cd ..
 
-echo "[4/4] Systemd Servisi (Arka Plan Hizmeti) Oluşturuluyor..."
-APPSERVER_DIR=$(pwd)
-
-cat > /etc/systemd/system/appserver.service <<EOF
-[Unit]
-Description=AppServer Web Hosting Control Panel
-After=network.target
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=${APPSERVER_DIR}/appserver-backend
-ExecStart=/usr/bin/node server.js
-Restart=on-failure
-Environment=NODE_ENV=production
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# Servisleri yeniden yükle ve başlat
-systemctl daemon-reload
-systemctl enable appserver
-systemctl restart appserver
+echo "[4/4] NPM PM2 Arka Plan Servisi Ayarlanıyor..."
+npm install -g pm2
+cd appserver-backend
+pm2 stop appserver-panel 2>/dev/null || true
+pm2 start server.js --name "appserver-panel"
+pm2 save
+pm2 startup | tail -n 1 | bash
 
 echo "=========================================="
-echo "Kurulum başarıyla tamamlandı!"
-echo "Panelinize sunucunuzun IP adresi üzerinden ulaşabilirsiniz:"
-echo "http://SUNUCU_IP_ADRESI:3001"
+echo "KURULUM BAŞARIYLA TAMAMLANDI! 🚀"
+echo "Tüm sistemler aktif edildi."
+echo "------------------------------------------"
+echo "Yönetici (WHM) Paneli: http://SUNUCU_IP_ADRESI:3001"
+echo "Kullanıcı (cPanel) Paneli: http://SUNUCU_IP_ADRESI:3002"
 echo "=========================================="

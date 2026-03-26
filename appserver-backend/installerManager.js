@@ -16,8 +16,8 @@ async function installWordpress(domain) {
     }
     
     if (isLinux) {
-        // Download latest WordPress, extract and set permissions
-        const cmd = `cd ${webRoot} && wget -qO wp.tar.gz https://wordpress.org/latest.tar.gz && tar -xzf wp.tar.gz --strip-components=1 && rm wp.tar.gz && chown -R www-data:www-data .`;
+        // Download latest WordPress, extract, delete default index.html, and set permissions
+        const cmd = `cd ${webRoot} && rm -f index.html && wget -qO wp.tar.gz https://wordpress.org/latest.tar.gz && tar -xzf wp.tar.gz --strip-components=1 && rm wp.tar.gz && chown -R www-data:www-data .`;
         try {
             await execPromise(cmd);
             return true;
