@@ -28,15 +28,25 @@ async function createFtpUser(username, password, domain) {
         
         // 1. Kullanıcıyı oluştur (Sadece yoksa)
         if (!userExists) {
-            await execPromise(`useradd -d ${homeDir} -s /bin/false ${username}`);
+            // www-data grubuna dahil ediyoruz
+            await execPromise(`useradd -d ${homeDir} -s /bin/false -G www-data ${username}`);
         }
         
-        // 2. Şifreyi belirle (chpasswd ile)
+        // 2. Şifreyi belirle 
         await execPromise(`echo "${username}:${password}" | chpasswd`);
         
-        // 3. İzinleri ayarla (vsftpd chroot gereksinimi)
-        await execPromise(`chown -R ${username}:${username} ${homeDir}`);
+        // 3. İleri Düzey Güvenli Yetkilendirme (ACL / SetGID / Sahiplik)
+        // SetGID (2775) -> Klasör içinde oluşan yeni dosyalar her zaman www-data grubunu miras alır.
+        // Böylece PHP (Web Sunucusu) ve FTP (Kullanıcı) çakışması asla yaşanmaz (777 riskine girmeden).
+        await execPromise(`chown -R ${username}:www-data ${homeDir}`);
+        await execPromise(`chmod -R 2775 ${homeDir}`);
         
+        // ACL varsa default kuralları uygula (Her ihtimale karşı)
+        try {
+            await execPromise(`setfacl -R -m d:u:${username}:rwx,d:g:www-data:rwx ${homeDir}`);
+            await execPromise(`setfacl -R -m u:${username}:rwx,g:www-data:rwx ${homeDir}`);
+        } catch(e) { /* ACL yüklü değilse görmezden gel, 2775 genelde kurtarır */ }
+
         console.log(`FTP Kullanıcısı Linux üzerinde başarıyla oluşturuldu: ${username}`);
         return true;
     } catch (err) {

@@ -17,7 +17,8 @@ async function installWordpress(domain) {
     
     if (isLinux) {
         // Download latest WordPress, extract, delete default index.html, and set permissions
-        const cmd = `cd ${webRoot} && rm -f index.html index.php && wget -qO wp.tar.gz https://wordpress.org/latest.tar.gz && tar -xzf wp.tar.gz --strip-components=1 && rm wp.tar.gz && chown -R www-data:www-data .`;
+        // Güvenli Grup Sahipliği (ACL destekli / 775 veya 2775) -> Hem FTP kullanıcısı hem PHP okuyabilir ve yazabilir
+        const cmd = `cd ${webRoot} && rm -f index.html index.php && wget -qO wp.tar.gz https://wordpress.org/latest.tar.gz && tar -xzf wp.tar.gz --strip-components=1 && rm wp.tar.gz && chown -R www-data:www-data . && find . -type d -exec chmod 2775 {} \\; && find . -type f -exec chmod 0664 {} \\;`;
         try {
             await execPromise(cmd);
             return true;
