@@ -729,6 +729,8 @@ app.post('/api/installer/:app', authenticate, async (req, res) => {
                 await installerManager.installWordpress(row.domain);
             } else if (appName === 'laravel') {
                 await installerManager.installLaravel(row.domain);
+            } else if (appName === 'sitepad') {
+                await installerManager.installSitepad(row.domain);
             } else {
                 return res.status(400).json({ error: 'Softaculous Error: Unsupported Application' });
             }

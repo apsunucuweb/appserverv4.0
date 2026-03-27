@@ -1043,7 +1043,7 @@ function App() {
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                    {/* WordPress Card */}
                    <div className="glass-panel p-6 flex flex-col justify-between hover:border-primary-500/50 transition-colors group">
                       <div>
@@ -1071,6 +1071,21 @@ function App() {
                       </div>
                       <button onClick={()=>handleInstallApp('laravel')} disabled={!installerDomain || !!installerStatus} className="w-full bg-slate-900 hover:bg-black text-white px-4 py-2 rounded-lg font-medium shadow dark:shadow-[0_0_15px_rgba(255,45,32,0.3)] transition-all flex items-center justify-center gap-2 h-10 disabled:opacity-50">
                          Install Laravel
+                      </button>
+                   </div>
+
+                   {/* SitePad Card */}
+                   <div className="glass-panel p-6 flex flex-col justify-between hover:border-blue-500/50 transition-colors group">
+                      <div>
+                        <div className="flex justify-between items-start mb-4">
+                           <div className="h-12 w-12 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center text-xl font-bold font-sans">SP</div>
+                           <span className="px-2 py-1 bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400 text-xs font-bold rounded">Active</span>
+                        </div>
+                        <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-2">SitePad Website Builder</h3>
+                        <p className="text-sm text-slate-500 mb-6">Sürükle bırak ile kolayca 1000'den fazla temayı kullanarak sitenizi oluşturun. Kod bilmeden tasarımlarınızı anında yayınlayın.</p>
+                      </div>
+                      <button onClick={()=>handleInstallApp('sitepad')} disabled={!installerDomain || !!installerStatus} className="w-full bg-blue-500 hover:bg-blue-600 focus:ring-2 focus:ring-blue-500/50 text-white rounded-xl font-bold transition-all shadow-lg shadow-blue-500/20 flex justify-center items-center gap-2 h-10 disabled:opacity-50">
+                         Install SitePad
                       </button>
                    </div>
                 </div>
