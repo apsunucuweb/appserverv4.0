@@ -58,7 +58,7 @@ async function createVhost(domain) {
         index index.php index.html;
         
         location ~ \\.php$ {
-            include snippets/fastcgi-php.conf;
+            include fastcgi_params;
             fastcgi_pass unix:/var/run/php/php8.1-fpm.sock;
             fastcgi_param SCRIPT_FILENAME $request_filename;
         }

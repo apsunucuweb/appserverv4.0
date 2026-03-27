@@ -19,8 +19,11 @@ echo "postfix postfix/main_mailer_type string 'Internet Site'" | debconf-set-sel
 echo "postfix postfix/mailname string 'appserver.local'" | debconf-set-selections
 
 apt-get update -y
+apt-get install -yq software-properties-common
+add-apt-repository ppa:ondrej/php -y
+apt-get update -y
 # Panelin UFW, Fail2Ban, BIND9, MariaDB, Nginx, Postfix, Dovecot vb tüm özellikleri için gerekli altyapı:
-apt-get install -yq curl wget git unzip vim ufw fail2ban nginx mariadb-server bind9 bind9utils bind9-doc postfix dovecot-imapd dovecot-pop3d certbot python3-certbot-nginx vsftpd php-fpm php-mysql composer
+apt-get install -yq curl wget git unzip vim ufw fail2ban nginx mariadb-server bind9 bind9utils bind9-doc postfix dovecot-imapd dovecot-pop3d certbot python3-certbot-nginx vsftpd php8.1-fpm php8.1-mysql php8.1-curl php8.1-mbstring php8.1-xml php8.1-zip php7.4-fpm php7.4-mysql php8.2-fpm php8.2-mysql composer
 
 # Node.js Kurulumu (Eğer yoksa)
 if ! command -v node > /dev/null; then
