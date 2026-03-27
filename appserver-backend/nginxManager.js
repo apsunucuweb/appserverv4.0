@@ -98,9 +98,11 @@ async function deleteVhost(domain) {
     const symlinkPath = path.join(NGINX_SITES_ENABLED, `${domain}.conf`);
     const webRoot = path.join(WEB_ROOT_BASE, domain);
     
-    // Dosyaları ve yapılandırmayı sil
+    // Dosyaları ve yapılandırmayı sil.
+    // DİKKAT: Önce sembolik bağı silmeliyiz. Eğer önce conf dosyasını silersek, 
+    // fs.existsSync() sembolik bağın hedefini kontrol ettiği için "false" döner ve sembolik bağ silinmez (kırık bağlantı kalır).
+    try { if (fs.existsSync(symlinkPath) || fs.lstatSync(symlinkPath).isSymbolicLink()) fs.unlinkSync(symlinkPath); } catch (e) {}
     if (fs.existsSync(confPath)) fs.unlinkSync(confPath);
-    if (fs.existsSync(symlinkPath)) fs.unlinkSync(symlinkPath);
     if (fs.existsSync(webRoot)) fs.rmSync(webRoot, { recursive: true, force: true });
     
     return reloadNginx();
