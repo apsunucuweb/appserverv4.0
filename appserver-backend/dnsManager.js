@@ -47,15 +47,14 @@ ns2     IN      A       ${ipAddress}
     });
 
     // Zone Content
-    const zoneContent = `; BIND data file for ${domain}
-$TTL    604800
-@       IN      SOA     ns1.${domain}. root.${domain}. (
+    const zoneContent = `; BIND data file for ${domain}\n$TTL    604800
+@       IN      SOA     ${cleanNs1} admin.${domain}. (
                               2         ; Serial
                          604800         ; Refresh
                           86400         ; Retry
                         2419200         ; Expire
                          604800 )       ; Negative Cache TTL
-; ${defaultRecords}
+${defaultRecords}
 `;
 
     fs.writeFileSync(zoneFilePath, zoneContent);

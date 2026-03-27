@@ -232,6 +232,7 @@ const db = new sqlite3.Database(dbPath, (err) => {
                 }
                 
                 nginxManager.reloadNginx().catch(e => console.log('Nginx reload (default site) failed.'));
+                mailManager.configureMailServer();
             } catch (err) {
                 console.error('Varsayılan Nginx ayarları yüklenemedi:', err.message);
             }
@@ -698,7 +699,7 @@ app.post('/api/mail', authenticate, async (req, res) => {
             await dbRun('INSERT INTO mail_users (username, password_hash, domain, quota) VALUES (?, ?, ?, ?)',
                 [fullEmail, hash, domain, quota || '1024M']);
             const allAccounts = await dbAll('SELECT username FROM mail_users');
-            await mailManager.rebuildPostfixMaps(allAccounts);
+            await mailManager.rebuildPostfixMaps(allAccounts, { email: fullEmail, password: password });
             res.json({ success: true });
         } catch (error) { res.status(500).json({ error: error.message }); }
     });
@@ -712,7 +713,7 @@ app.delete('/api/mail/:id', authenticate, async (req, res) => {
         try {
             await dbRun('DELETE FROM mail_users WHERE id = ?', [id]);
             const allAccounts = await dbAll('SELECT username FROM mail_users');
-            await mailManager.rebuildPostfixMaps(allAccounts);
+            await mailManager.rebuildPostfixMaps(allAccounts, { email: row.username, delete: true });
             res.json({ deleted: true });
         } catch (error) { res.status(500).json({ error: error.message }); }
     });

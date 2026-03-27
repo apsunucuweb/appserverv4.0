@@ -17,14 +17,14 @@ async function installSSL(domain, email = 'admin@' + domain) {
             return true;
         }
 
-        // Runs certbot for nginx in non-interactive mode
-        const cmd = `certbot --nginx -d ${domain} -d www.${domain} --non-interactive --agree-tos -m ${email} --redirect`;
+        // Runs certbot for nginx in non-interactive mode. Only requests for root domain to avoid www resolution issues on dynamic subdomains.
+        const cmd = `certbot --nginx -d ${domain} --non-interactive --agree-tos --register-unsafely-without-email --redirect`;
         const { stdout, stderr } = await execPromise(cmd);
         console.log('Certbot Output:', stdout);
         return true;
     } catch (err) {
         console.error('Certbot Error:', err);
-        throw new Error('SSL kurulum işlemi başarısız. Certbot veya Nginx yapılandırmasını kontrol edin.');
+        throw new Error('SSL kurulum işlemi başarısız. Lütfen alan adınızın (' + domain + ') bu sunucu IP adresine tam olarak yönlendiğinden (DNS Propagation) emin olun.');
     }
 }
 
