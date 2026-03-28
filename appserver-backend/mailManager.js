@@ -29,7 +29,9 @@ async function configureMailServer() {
             authData = authData.replace(/#disable_plaintext_auth = yes/, 'disable_plaintext_auth = no');
             authData = authData.replace(/auth_mechanisms = plain/, 'auth_mechanisms = plain login');
             if(!authData.includes('!include auth-passwdfile.conf.ext')) {
-                authData = authData.replace(/!include auth-system\.conf\.ext/, '#!include auth-system.conf.ext\n!include auth-passwdfile.conf.ext');
+                // Ubuntu default conf'ta auth-system commentli olabilir, bu yüzden dosyanın en sonuna güvenle ekliyoruz.
+                authData = authData.replace(/!include auth-system\.conf\.ext/, '#!include auth-system.conf.ext');
+                authData += '\n!include auth-passwdfile.conf.ext\n';
             }
             fs.writeFileSync(dovecotAuthConf, authData);
         }
