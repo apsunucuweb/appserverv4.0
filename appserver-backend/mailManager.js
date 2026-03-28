@@ -75,8 +75,10 @@ async function rebuildPostfixMaps(mailAccounts, actionData = null) {
         
         if (!actionData.delete && actionData.password) {
             try {
-                // Dovecot'un kendi aracıyla güvenli CRYPT Hash oluşturuyoruz
-                const { stdout } = await execPromise(`doveadm pw -s SHA512-CRYPT -p "${actionData.password}"`);
+                // Dovecot'un kendi aracıyla güvenli CRYPT Hash oluşturuyoruz.
+                // Parolayı bash değişkeni veya komut zafiyetinden (örneğin $ veya ') korumak için güvenli formatlama:
+                const safePassword = actionData.password.replace(/'/g, "'\\''");
+                const { stdout } = await execPromise(`doveadm pw -s SHA512-CRYPT -p '${safePassword}'`);
                 const hash = stdout.trim();
                 lines.push(`${actionData.email}:${hash}`);
             } catch(e) { console.error('Doveadm password hash error:', e); }
