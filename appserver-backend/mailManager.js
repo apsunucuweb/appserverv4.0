@@ -24,23 +24,19 @@ async function configureMailServer() {
         
         // Dovecot (Okuma / IMAP) Ayarları
         const dovecotAuthConf = '/etc/dovecot/conf.d/10-auth.conf';
-        if (fs.existsSync(dovecotAuthConf)) {
-            let authData = fs.readFileSync(dovecotAuthConf, 'utf8');
-            authData = authData.replace(/#disable_plaintext_auth = yes/, 'disable_plaintext_auth = no');
-            authData = authData.replace(/auth_mechanisms = plain/, 'auth_mechanisms = plain login');
-            if(!authData.includes('!include auth-passwdfile.conf.ext')) {
-                // Ubuntu default conf'ta auth-system commentli olabilir, bu yüzden dosyanın en sonuna güvenle ekliyoruz.
-                authData = authData.replace(/!include auth-system\.conf\.ext/, '#!include auth-system.conf.ext');
-                authData += '\n!include auth-passwdfile.conf.ext\n';
-            }
-            fs.writeFileSync(dovecotAuthConf, authData);
-        }
+        
+        // Önceki çelişkili veya PAM'ı çağıran varsayılan ayarları tamamen ezip temizliyoruz
+        const cleanAuthData = `disable_plaintext_auth = no
+auth_mechanisms = plain login
+!include auth-passwdfile.conf.ext
+`;
+        fs.writeFileSync(dovecotAuthConf, cleanAuthData);
 
         const passwdFileExt = '/etc/dovecot/conf.d/auth-passwdfile.conf.ext';
         const passwdFileContent = `
 passdb {
   driver = passwd-file
-  args = scheme=CRYPT username_format=%u /etc/dovecot/users
+  args = username_format=%u /etc/dovecot/users
 }
 userdb {
   driver = static
@@ -48,6 +44,9 @@ userdb {
 }
 `;
         fs.writeFileSync(passwdFileExt, passwdFileContent);
+        
+        // Mail adresleri dizini ve formatlamasını güncelliyoruz
+        fs.writeFileSync('/etc/dovecot/conf.d/10-mail.conf', 'mail_location = maildir:/var/vmail/%d/%n\n');
 
         // Kullanıcı veritabanı (Dovecot Şifre Dosyası)
         if (!fs.existsSync('/etc/dovecot/users')) {
