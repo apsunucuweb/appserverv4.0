@@ -45,8 +45,14 @@ userdb {
 `;
         fs.writeFileSync(passwdFileExt, passwdFileContent);
         
-        // Mail adresleri dizini ve formatlamasını güncelliyoruz
-        fs.writeFileSync('/etc/dovecot/conf.d/10-mail.conf', 'mail_location = maildir:/var/vmail/%d/%n\n');
+        // Mail adresleri dizini, formatlaması ve Namespace(Gelen kutusu kök yolu)
+        const mailConfContent = `mail_location = maildir:/var/vmail/%d/%n/Maildir
+namespace inbox {
+  inbox = yes
+  separator = /
+}
+`;
+        fs.writeFileSync('/etc/dovecot/conf.d/10-mail.conf', mailConfContent);
 
         // Kullanıcı veritabanı (Dovecot Şifre Dosyası)
         if (!fs.existsSync('/etc/dovecot/users')) {
